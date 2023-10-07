@@ -2,15 +2,15 @@
 pragma solidity ^0.8.19;
 
 import { Script, console2 } from "forge-std/Script.sol";
-import { Module } from "../src/Module.sol";
+import { HatsFarcasterDelegator } from "../src/HatsFarcasterDelegator.sol";
 
 contract Deploy is Script {
-  Module public implementation;
+  HatsFarcasterDelegator public implementation;
   bytes32 public SALT = bytes32(abi.encode("change this to the value of your choice"));
 
   // default values
   bool internal _verbose = true;
-  string internal _version = "0.0.1"; // increment this with each new deployment
+  string internal _version = "0.1.0"; // increment this with each new deployment
 
   /// @dev Override default values, if desired
   function prepare(bool verbose, string memory version) public {
@@ -26,7 +26,7 @@ contract Deploy is Script {
 
   function _log(string memory prefix) internal view {
     if (_verbose) {
-      console2.log(string.concat(prefix, "Module:"), address(implementation));
+      console2.log(string.concat(prefix, "HatsFarcasterDelegator:"), address(implementation));
     }
   }
 
@@ -42,7 +42,7 @@ contract Deploy is Script {
      *       never differs regardless of where its being compiled
      *    2. The provided salt, `SALT`
      */
-    implementation = new Module{ salt: SALT}(_version /* insert constructor args here */);
+    implementation = new HatsFarcasterDelegator{ salt: SALT}(_version /* insert constructor args here */);
 
     vm.stopBroadcast();
 
@@ -60,7 +60,7 @@ contract DeployPrecompiled is Deploy {
     bytes memory args = abi.encode( /* insert constructor args here */ );
 
     /// @dev Load and deploy pre-compiled ir-optimized bytecode.
-    implementation = Module(deployCode("optimized-out/Module.sol/Module.json", args));
+    implementation = HatsFarcasterDelegator(deployCode("optimized-out/Module.sol/Module.json", args));
 
     vm.stopBroadcast();
 
