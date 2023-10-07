@@ -4,3 +4,9 @@
 [submodule "lib/hats-module"]
 	path = lib/hats-module
 	url = https://github.com/Hats-Protocol/hats-module
+[submodule "lib/farcaster"]
+	path = lib/farcaster
+	url = https://github.com/farcasterxyz/contracts
+[submodule "lib/solady"]
+	path = lib/solady
+	url = https://github.com/vectorized/solady
