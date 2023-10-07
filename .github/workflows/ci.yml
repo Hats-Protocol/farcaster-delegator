@@ -1,0 +1,100 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+env:
+  FOUNDRY_PROFILE: ci
+  INFURA_KEY: ${{ secrets.INFURA_KEY }}
+  ALCHEMY_KEY: ${{ secrets.ALCHEMY_KEY }}
+  GC_RPC: ${{ secrets.GC_RPC }}
+  POLYGON_RPC: ${{ secrets.POLYGON_RPC }}
+  PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+  
+jobs:
+  
+  lint:
+    name: "Markdown linting"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        name: Check out the code
+      - name: Lint Code Base
+        uses: docker://avtodev/markdown-lint:v1
+        with:
+          args: "**/*.md"
+  test:
+    name: "Foundry tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Check formatting
+        run: forge fmt --check
+      
+      - name: Check contract sizes
+        run: forge build --sizes --skip script
+        # Replace the above line with the below if using pre-compiled ir-optimized contracts
+        # run: FOUNDRY_PROFILE=optimized forge build --sizes --skip script
+
+      - name: Run tests
+        run: forge test -vvv
+  
+  # coverage:
+  #   name: "Test coverage"
+
+  #   env:
+  #     FOUNDRY_PROFILE: lite
+
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+
+  #     - name: Install Foundry
+  #       uses: foundry-rs/foundry-toolchain@v1
+  #       with:
+  #         version: nightly
+
+  #     - name: Run coverage
+  #       run: forge coverage --report summary --report lcov
+
+  #     # To ignore coverage for certain directories modify the paths in this step as needed. The
+  #     # below default ignores coverage results for the test and script directories. Alternatively,
+  #     # to include coverage in all directories, comment out this step. Note that because this
+  #     # filtering applies to the lcov file, the summary table generated in the previous step will
+  #     # still include all files and directories.
+  #     # The `--rc lcov_branch_coverage=1` part keeps branch info in the filtered report, since lcov
+  #     # defaults to removing branch info.
+  #     - name: Filter directories
+  #       run: |
+  #         sudo apt update && sudo apt install -y lcov
+  #         lcov --remove lcov.info 'src/mocks/*' 'test/*' 'script/*' --output-file lcov.info --rc lcov_branch_coverage=1
+
+  #     # This step posts a detailed coverage report as a comment and deletes previous comments on
+  #     # each push. The below step is used to fail coverage if the specified coverage threshold is
+  #     # not met. The below step can post a comment (when it's `github-token` is specified) but it's
+  #     # not as useful, and this action cannot fail CI based on a minimum coverage threshold, which
+  #     # is why we use both in this way.
+  #     - name: Post coverage report
+  #       if: github.event_name == 'pull_request' # This action fails when ran outside of a pull request.
+  #       uses: romeovs/lcov-reporter-action@v0.3.1
+  #       with:
+  #         delete-old-comments: true
+  #         lcov-file: ./lcov.info
+  #         github-token: ${{ secrets.GITHUB_TOKEN }} # Adds a coverage summary comment to the PR.
+
+  #     - name: Verify minimum coverage
+  #       uses: zgosalvez/github-actions-report-lcov@v2
+  #       with:
+  #         coverage-files: ./lcov.info
+  #         minimum-coverage: 95 # Set coverage threshold.

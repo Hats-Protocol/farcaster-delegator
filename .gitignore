@@ -1,0 +1,6 @@
+cache/
+out/
+optimized-out/
+.vscode/
+broadcast/
+.env

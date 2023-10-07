@@ -1,0 +1,72 @@
+[profile.default]
+src = 'src'
+out = 'out'
+libs = ['lib']
+optimizer_runs = 1_000_000
+# the following setting ensures that deterministically deployed contracts will always be to the same address
+bytecode_hash = "none"
+gas_reports = []
+auto_detect_solc = false
+solc = "0.8.19"
+remappings = [
+  "ds-test/=lib/forge-std/lib/ds-test/src/",
+  "forge-std/=lib/forge-std/src/",
+  "hats-module/=lib/hats-module/src/",
+]
+# Enable tests to read ir-optimized bytecode precompiled by profile.optimized
+fs_permissions = [{ access = "read", path = "./optimized-out" }]
+
+# for pre-compiling ir-optimized bytecode that will be later deployed by tests
+[profile.optimized]
+via_ir = true
+out = "optimized-out"
+script = "src"
+bytecode_hash = "none"
+sizes = true
+# no need to compile tests with via-ir since they load optimized bytecode directly by default
+test = "src"
+
+# for running tests against pre-compiled ir-optimized deployments
+[profile.test]
+src = "test"
+
+[profile.ci]
+fuzz = { runs = 5000 }
+invariant = { runs = 1000 }
+
+[profile.lite]
+fuzz = { runs = 32 }
+invariant = { runs = 10 }
+# Speed up compilation and tests during development.
+optimizer = false
+
+[fmt]
+bracket_spacing = true
+int_types = "long"
+line_length = 120
+multiline_func_header = "attributes_first"
+number_underscore = "thousands"
+quote_style = "double"
+tab_width = 2
+wrap_comments = true
+
+[rpc_endpoints]
+arbitrum = "https://arbitrum-mainnet.infura.io/v3/${INFURA_KEY}"
+gnosis = "${GC_RPC}"
+goerli = "https://goerli.infura.io/v3/${INFURA_KEY}"
+local = "http://localhost:8545"
+mainnet = "https://mainnet.infura.io/v3/${INFURA_KEY}"
+optimism = "https://optimism-mainnet.infura.io/v3/${INFURA_KEY}"
+polygon = "${POLYGON_RPC}"
+sepolia = "https://sepolia.infura.io/v3/${INFURA_KEY}"
+
+[etherscan]
+arbitrum = { key = "${ARBISCAN_KEY}", url = "https://api.arbiscan.io/api" }
+goerli = { key = "${ETHERSCAN_KEY}", url = "https://api-goerli.etherscan.io/api" }
+gnosis = { key = "${GNOSISSCAN_KEY}", url = "https://api.gnosisscan.io/api" }
+mainnet = { key = "${ETHERSCAN_KEY}", url = "https://api.etherscan.io/api" }
+optimism = { key = "${OPTIMISM_KEY}", url = "https://api-optimistic.etherscan.io/api" }
+sepolia = { key = "${ETHERSCAN_KEY}", url = "https://api-sepolia.etherscan.io/api" }
+polygon = { key = "${POLYGONSCAN_KEY}", url = "https://api.polygonscan.com/api" }
+
+# See more config options https://github.com/foundry-rs/foundry/tree/master/config
