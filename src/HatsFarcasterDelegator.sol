@@ -48,19 +48,13 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
    * 0       | IMPLEMENTATION    | address | 20      | HatsModule          |
    * 20      | HATS              | address | 20      | HatsModule          |
    * 40      | hatId             | uint256 | 32      | HatsModule          |
-   * 72      | fid               | uint256 | 32      | this                |
-   * 104     | idRegistry        | address | 20      | this                |
+   * 72      | idRegistry        | address | 20      | this                |
    * ----------------------------------------------------------------------+
    */
 
   /// @inheritdoc FarcasterDelegator
-  function fid() public pure override returns (uint256) {
-    return _getArgUint256(72);
-  }
-
-  /// @inheritdoc FarcasterDelegator
   function idRegistry() public pure override returns (IIdRegistry) {
-    return IIdRegistry(_getArgAddress(104));
+    return IIdRegistry(_getArgAddress(72));
   }
 
   /*//////////////////////////////////////////////////////////////
@@ -72,7 +66,7 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
   constructor(string memory _version) HatsModule(_version) { }
 
   /*//////////////////////////////////////////////////////////////
-                            INITIALIZOR
+                            INITIALIZER
   //////////////////////////////////////////////////////////////*/
 
   /// @inheritdoc HatsModule
@@ -83,6 +77,7 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
   //////////////////////////////////////////////////////////////*/
 
   // TODO add wrappers for relevant Farcaster functions to enable the {recovery} address to call them?
+  // - use _checkRecovery() to authorize these functions
 
   /*//////////////////////////////////////////////////////////////
                           ERC1271 FUNCTION
@@ -96,10 +91,16 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
     address signer = ECDSA.recoverCalldata(_hash, _signature);
 
     // check that the signer is wearing the {hatId} hat
-    if (HATS().isWearerOfHat(signer, hatId())) {
+    if (isValidSigner(signer)) {
       return IERC1271.isValidSignature.selector; // the ERC1271 magic value
     } else {
       return 0xFFFFFFFF;
     }
+  }
+
+  /// @inheritdoc FarcasterDelegator
+  function isValidSigner(address _signer) public view returns (bool) {
+    /// @dev Valid signers are addresses that are current wearing the {hatId} hat
+    return HATS().isWearerOfHat(_signer, hatId());
   }
 }
