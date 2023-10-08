@@ -76,8 +76,18 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
                         FARCASTER FUNCTIONS
   //////////////////////////////////////////////////////////////*/
 
-  // TODO add wrappers for relevant Farcaster functions to enable the {recovery} address to call them?
-  // - use _checkRecovery() to authorize these functions
+  /* TODO add wrappers for relevant Farcaster functions to enable the {recovery} address to call them?
+  - use _checkRecovery() to authorize these functions
+
+  Potential functions to wrap:
+  - KeyRegistry.add
+  - KeyRegistry.remove
+  - IdRegistry.transfer
+  - IdRegistry.changeRecoveryAddress
+  - StorageRegistry.rent
+
+  Alternatively, we could add an arbitrary exec() function.
+  */
 
   /*//////////////////////////////////////////////////////////////
                           ERC1271 FUNCTION
@@ -86,6 +96,7 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
   /// @inheritdoc FarcasterDelegator
   // TODO support contract signatures?
   // TODO support multiple hats?
+  // TODO differentially validate by caller, ie only authorize hat-wearers for certain functions?
   function isValidSignature(bytes32 _hash, bytes calldata _signature) public view override returns (bytes4) {
     /// @dev ECDSA.recoverCalldata() will revert with `InvalidSignature()` if the signature is invalid
     address signer = ECDSA.recoverCalldata(_hash, _signature);
