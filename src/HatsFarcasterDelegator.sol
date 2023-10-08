@@ -9,6 +9,7 @@ import { FarcasterDelegator, IERC1271 } from "./FarcasterDelegator.sol";
 
 /*
 Design considerations/questions:
+- How can this contract receive fid transfers?
 - Should we support contract signatures? This might be relevant as account abstraction proliferates.
 - Should we support multiple hats? This would require a different approach to {isValidSignature}, such as potentially
 requiring that the hatId be appended to the signature. And also require logic to approve additional hats.
@@ -94,6 +95,7 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
   //////////////////////////////////////////////////////////////*/
 
   /// @inheritdoc FarcasterDelegator
+  // TODO somehow handle transfer signatures so that this contract can receive fid transfers
   // TODO support contract signatures?
   // TODO support multiple hats?
   // TODO differentially validate by caller, ie only authorize hat-wearers for certain functions?
