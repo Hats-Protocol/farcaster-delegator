@@ -3,9 +3,7 @@ pragma solidity ^0.8.21;
 
 // import { console2 } from "forge-std/Test.sol"; // remove before deploy
 import { HatsModule } from "hats-module/HatsModule.sol";
-import { IIdRegistry } from "farcaster/interfaces/IIdRegistry.sol";
-import { ECDSA } from "solady/utils/ECDSA.sol";
-import { FarcasterDelegator, IERC1271 } from "./FarcasterDelegator.sol";
+import { FarcasterDelegator, IERC1271, IIdRegistry, IKeyRegistry } from "./FarcasterDelegator.sol";
 
 /*
 Design considerations/questions:
@@ -50,6 +48,7 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
    * 20      | HATS              | address | 20      | HatsModule          |
    * 40      | hatId             | uint256 | 32      | HatsModule          |
    * 72      | idRegistry        | address | 20      | this                |
+   * 92      | keyReigstry       | address | 20      | this                |
    * ----------------------------------------------------------------------+
    */
 
@@ -57,6 +56,13 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
   function idRegistry() public pure override returns (IIdRegistry) {
     return IIdRegistry(_getArgAddress(72));
   }
+
+  /// @inheritdoc FarcasterDelegator
+  function keyRegistry() public pure override returns (IKeyRegistry) {
+    return IKeyRegistry(_getArgAddress(72));
+  }
+
+  
 
   /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
@@ -71,49 +77,38 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
   //////////////////////////////////////////////////////////////*/
 
   /// @inheritdoc HatsModule
-  function _setUp(bytes calldata _initData) internal override { }
+  function _setUp(bytes calldata _initData) internal override {
+    address recovery = abi.decode(_initData, (address));
 
-  /*//////////////////////////////////////////////////////////////
-                        FARCASTER FUNCTIONS
-  //////////////////////////////////////////////////////////////*/
-
-  /* TODO add wrappers for relevant Farcaster functions to enable the {recovery} address to call them?
-  - use _checkRecovery() to authorize these functions
-
-  Potential functions to wrap:
-  - KeyRegistry.add
-  - KeyRegistry.remove
-  - IdRegistry.transfer
-  - IdRegistry.changeRecoveryAddress
-  - StorageRegistry.rent
-
-  Alternatively, we could add an arbitrary exec() function.
-  */
-
-  /*//////////////////////////////////////////////////////////////
-                          ERC1271 FUNCTION
-  //////////////////////////////////////////////////////////////*/
-
-  /// @inheritdoc FarcasterDelegator
-  // TODO somehow handle transfer signatures so that this contract can receive fid transfers
-  // TODO support contract signatures?
-  // TODO support multiple hats?
-  // TODO differentially validate by caller, ie only authorize hat-wearers for certain functions?
-  function isValidSignature(bytes32 _hash, bytes calldata _signature) public view override returns (bytes4) {
-    /// @dev ECDSA.recoverCalldata() will revert with `InvalidSignature()` if the signature is invalid
-    address signer = ECDSA.recoverCalldata(_hash, _signature);
-
-    // check that the signer is wearing the {hatId} hat
-    if (isValidSigner(signer)) {
-      return IERC1271.isValidSignature.selector; // the ERC1271 magic value
-    } else {
-      return 0xFFFFFFFF;
+    if (recovery != address(0)) {
+      register(recovery);
     }
   }
 
-  /// @inheritdoc FarcasterDelegator
-  function isValidSigner(address _signer) public view returns (bool) {
-    /// @dev Valid signers are addresses that are current wearing the {hatId} hat
-    return HATS().isWearerOfHat(_signer, hatId());
+  /*//////////////////////////////////////////////////////////////
+                          PUBLIC FUNCTIONS
+  //////////////////////////////////////////////////////////////*/
+
+  /// @notice Check whether `_signer` is authorized by this contract for the given `_typeHash` action
+  /// @param _typeHash The typehash of the Farcaster action being authorized.
+  function isValidSigner(bytes32 _typeHash, address _signer) public view returns (bool) {
+    return _isValidSigner(_typeHash, _signer);
   }
+
+  /*//////////////////////////////////////////////////////////////
+                            OVERRIDES
+  //////////////////////////////////////////////////////////////*/
+
+  /// @inheritdoc FarcasterDelegator
+  // TODO handle transfer signatures so that this contract can receive fid transfers
+  // TODO support multiple hats?
+  // TODO differentially validate by caller context, ie only authorize hat-wearers for certain functions?
+  function _isValidSigner(bytes32 _typeHash, address _signer) internal view override returns (bool) {
+    /// @dev Valid signers are addresses that are current wearing the {hatId} hat
+    if (_typeHash == ADD_TYPEHASH) return HATS().isWearerOfHat(_signer, hatId());
+
+    return false;
+  }
+
+  function _prepareToReceive(uint256 _fid) internal override { }
 }
