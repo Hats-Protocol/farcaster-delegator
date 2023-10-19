@@ -43,6 +43,8 @@ contract ModuleTest is Deploy, FDTest {
   bytes public initArgs;
 
   KeyRegistry public keyRegistry = KeyRegistry(0x00000000fC9e66f1c6d86D750B4af47fF0Cc343d);
+  SignedKeyRequestValidator public signedKeyRequestValidator =
+    SignedKeyRequestValidator(0x00000000FC700472606ED4fA22623Acf62c60553);
 
   uint256 public tophat;
   uint256 public casterHat;
@@ -105,7 +107,7 @@ contract WithInstanceTest is ModuleTest {
     HATS.transferHat(tophat, address(this), org);
 
     // set up the other immutable args
-    otherImmutableArgs = abi.encodePacked(idRegistry);
+    otherImmutableArgs = abi.encodePacked(address(idRegistry), address(keyRegistry), address(signedKeyRequestValidator));
 
     // set up the instance with an empty recovery address to denote that it should not register a hat for itself
     initArgs = abi.encode(address(0));
@@ -178,11 +180,11 @@ contract WithFarcasterHelpers is WithInstanceTest {
     uint256 _deadline
   ) internal view returns (bytes memory) {
     return abi.encode(
-      keyRegistry.ADD_TYPEHASH(),
-      _owner,
-      _keyType,
-      keccak256(_key),
-      _metadataType,
+      keyRegistry.ADD_TYPEHASH(), // 32
+      _owner, // 64
+      _keyType, // 96
+      keccak256(_key), // 128
+      _metadataType, // 136
       keccak256(_metadata),
       _nonce,
       _deadline
@@ -191,6 +193,7 @@ contract WithFarcasterHelpers is WithInstanceTest {
 
   function _buildKeyRegistryDigest(bytes memory _data) internal view returns (bytes32) {
     return keyRegistry.hashTypedDataV4(keccak256(_data));
+    // return keccak256(_data);
   }
 
   /// @dev modified from
@@ -222,6 +225,39 @@ contract WithFarcasterHelpers is WithInstanceTest {
     _signature = abi.encodePacked(_signature, data);
   }
 
+  function _encodeSignedKeyRequestData(
+    SignedKeyRequestValidator _validator,
+    uint256 _fid,
+    bytes memory _key,
+    uint256 _deadline
+  ) internal view returns (bytes memory) {
+    return abi.encode(_validator.METADATA_TYPEHASH(), _fid, keccak256(_key), _deadline);
+  }
+
+  function _signKeyRequest(
+    SignedKeyRequestValidator _validator,
+    uint256 _fid,
+    uint256 _pk,
+    bytes memory _key,
+    uint256 _deadline
+  ) internal returns (bytes memory) {
+    // encode the data
+    bytes memory data = _encodeSignedKeyRequestData(_validator, _fid, _key, _deadline);
+
+    // build the digest
+    bytes32 digest = _validator.hashTypedDataV4(keccak256(data));
+
+    // sign it to generate the preliminary signature
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(_pk, digest);
+    bytes memory signature = abi.encodePacked(r, s, v);
+
+    // assert that the preliminary signature is the correct length
+    assertEq(signature.length, 65);
+
+    // append the encoded data to the signature
+    return abi.encodePacked(signature, data);
+  }
+
   function _buildSignedKeyRequestMetadata(
     SignedKeyRequestValidator _validator,
     uint256 _fid,
@@ -230,14 +266,7 @@ contract WithFarcasterHelpers is WithInstanceTest {
     bytes memory _key,
     uint256 _deadline
   ) internal returns (bytes memory) {
-    bytes32 digest = _validator.hashTypedDataV4(
-      keccak256(abi.encode(_validator.METADATA_TYPEHASH(), _fid, keccak256(_key), _deadline))
-    );
-
-    (uint8 v, bytes32 r, bytes32 s) = vm.sign(_pk, digest);
-    bytes memory signature = abi.encodePacked(r, s, v);
-
-    assertEq(signature.length, 65);
+    bytes memory signature = _signKeyRequest(_validator, _fid, _pk, _key, _deadline);
 
     return abi.encode(
       SignedKeyRequestValidator.SignedKeyRequestMetadata({
@@ -272,9 +301,12 @@ contract IsValidSignature is WithFarcasterHelpers {
     _nonce = 1;
     _deadline = 1;
 
+    console2.log("test:keyRegistry", address(keyRegistry));
+
     // encode add key data
     addKeyData = _encodeAddKeyData(_owner, _keyType, _key, _metadataType, _metadata, _nonce, _deadline);
     console2.log("addKeyData", vm.toString(addKeyData));
+    console2.log("test:keccak-ed addKeyData", vm.toString(keccak256(addKeyData)));
 
     // prepare the digest
     digest = _buildKeyRegistryDigest(addKeyData);
@@ -361,7 +393,9 @@ contract AddCasterKeyViaClient is WithFarcasterHelpers {
       deadline
     );
 
-    // client calls addKey with the signature
+    console2.log("addSig length", addSig.length);
+
+    // client calls addFor with the signature
     vm.prank(client);
     keyRegistry.addFor(address(instance), keyType, key, metadataType, metadata, deadline, addSig);
 

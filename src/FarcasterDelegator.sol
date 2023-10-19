@@ -48,9 +48,10 @@ abstract contract FarcasterDelegator is IERC1271 {
   bytes32 public constant CHANGE_RECOVERY_ADDRESS_TYPEHASH =
     keccak256("ChangeRecoveryAddress(uint256 fid,address recovery,uint256 nonce,uint256 deadline)");
 
-  bytes4 public constant ERC1271_MAGICVALUE = IERC1271.isValidSignature.selector;
+  bytes32 public constant SIGNED_KEY_REQUEST_TYPEHASH =
+    keccak256("SignedKeyRequest(uint256 requestFid,bytes key,uint256 deadline)");
 
-  bytes4 public constant ERC1271_INVALID_SIGNATURE = bytes4(0);
+  bytes4 public constant ERC1271_MAGICVALUE = IERC1271.isValidSignature.selector;
 
   /*//////////////////////////////////////////////////////////////
                             MUTABLE STATE
@@ -67,6 +68,9 @@ abstract contract FarcasterDelegator is IERC1271 {
 
   /// @notice The address of the Farcaster Id Registry
   function keyRegistry() public view virtual returns (IKeyRegistry) { }
+
+  /// @notice The address of the Farcaster SignedKeyRequestValidator
+  function signedKeyRequestValidator() public view virtual returns (address) { }
 
   /*//////////////////////////////////////////////////////////////
                         FARCASTER FUNCTIONS
@@ -127,6 +131,7 @@ abstract contract FarcasterDelegator is IERC1271 {
   //////////////////////////////////////////////////////////////*/
 
   /// @inheritdoc IERC1271
+  // TODO document the signature blob format
   function isValidSignature(bytes32 _hash, bytes calldata _signature) public view override returns (bytes4) {
     // extract the signature from the _signature blob, ie the first 65 bytes
     bytes memory sig = _signature[0:65];
@@ -134,43 +139,54 @@ abstract contract FarcasterDelegator is IERC1271 {
     /// @dev ECDSA.recover() will revert with `InvalidSignature()` if the sig is cryptographically invalid
     address signer = ECDSA.recover(_hash, sig);
 
-    // extract the typehash from the 32 bytes after the sig, ie the 65th to 97th bytes of the _signature blob
+    // console2.log("_signature length", _signature.length);
+
+    // extract the typehash from 1st word after the sig, ie the 66th to 98th bytes of the _signature blob
     bytes32 typehash = bytes32(_signature[65:97]);
 
-    address registry;
+    address typeHashSource;
 
+    // check that the typehash is from a known source and if so set that address as our source for recreating the
+    // typed hashed data. Otherwise, return 0x00000000 for invalid signature.
     if (typehash == ADD_TYPEHASH || typehash == REMOVE_TYPEHASH) {
       // typehash is from keyRegistry
-      registry = address(keyRegistry());
+      typeHashSource = address(keyRegistry());
     } else if (typehash == TRANSFER_TYPEHASH || typehash == CHANGE_RECOVERY_ADDRESS_TYPEHASH) {
       // typehash is from idRegistry
-      registry = address(idRegistry());
+      typeHashSource = address(idRegistry());
+    } else if (typehash == SIGNED_KEY_REQUEST_TYPEHASH) {
+      // call is originating from a SignedKeyRequestValidator
+      typeHashSource = signedKeyRequestValidator();
     } else {
       // unknown typehash
-      return ERC1271_INVALID_SIGNATURE;
+      return bytes4(0);
     }
 
     // extract the typed data params from the _signature blob, ie everything after the first 65 bytes
-    bytes memory data = _signature[65:];
+    bytes memory typedData = _signature[65:];
 
     // check that _hash can be recreated from the extracted data
-    if (_hash != _buildDigest(registry, data)) {
-      console2.log("hash mismatch");
-      return ERC1271_INVALID_SIGNATURE;
+    if (_hash != _recreateTypedHash(typeHashSource, typedData)) {
+      // console2.log("hash mismatch");
+      return bytes4(0);
     }
     // check that the signer is valid and return the ERC1271 magic value if so
     if (_isValidSigner(typehash, signer)) {
       return ERC1271_MAGICVALUE;
     } else {
-      return ERC1271_INVALID_SIGNATURE;
+      // console2.log("nonwearer");
+      return bytes4(0);
     }
   }
 
   /// @dev Check whether `_signer` is authorized by this contract for the given `_typehash` action
   function _isValidSigner(bytes32 _typehash, address _signer) internal view virtual returns (bool) { }
 
-  function _buildDigest(address _registry, bytes memory _data) internal view returns (bytes32) {
-    return EIP712Like(_registry).hashTypedDataV4(keccak256(_data));
+  function _recreateTypedHash(address _registry, bytes memory _typedData) internal view returns (bytes32) {
+    // console2.log("712-hashed typeData");
+    // console2.logBytes32(EIP712Like(_registry).hashTypedDataV4(keccak256(_typedData)));
+    return EIP712Like(_registry).hashTypedDataV4(keccak256(_typedData));
+    // return keccak256(_data);
   }
 
   /*//////////////////////////////////////////////////////////////

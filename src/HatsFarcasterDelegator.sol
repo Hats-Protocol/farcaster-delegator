@@ -39,17 +39,18 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
    *
    * For more, see here: https://github.com/Saw-mon-and-Natalie/clones-with-immutable-args
    *
-   * ----------------------------------------------------------------------+
-   * CLONE IMMUTABLE "STORAGE"                                             |
-   * ----------------------------------------------------------------------|
-   * Offset  | Constant          | Type    | Length  | Source              |
-   * ----------------------------------------------------------------------|
-   * 0       | IMPLEMENTATION    | address | 20      | HatsModule          |
-   * 20      | HATS              | address | 20      | HatsModule          |
-   * 40      | hatId             | uint256 | 32      | HatsModule          |
-   * 72      | idRegistry        | address | 20      | this                |
-   * 92      | keyReigstry       | address | 20      | this                |
-   * ----------------------------------------------------------------------+
+   * ----------------------------------------------------------------------------+
+   * CLONE IMMUTABLE "STORAGE"                                                   |
+   * ----------------------------------------------------------------------------|
+   * Offset  | Constant                   | Type          | Length  | Source     |
+   * ----------------------------------------------------------------------------|
+   * 0       | IMPLEMENTATION             | address       | 20      | HatsModule |
+   * 20      | HATS                       | address       | 20      | HatsModule |
+   * 40      | hatId                      | uint256       | 32      | HatsModule |
+   * 72      | idRegistry                 | IIdRegistry   | 20      | this       |
+   * 92      | keyRegistry                | IKeyRegistry  | 20      | this       |
+   * 112     | signedKeyRequestValidator  | address       | 20      | this       |
+   * ----------------------------------------------------------------------------+
    */
 
   /// @inheritdoc FarcasterDelegator
@@ -59,10 +60,13 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
 
   /// @inheritdoc FarcasterDelegator
   function keyRegistry() public pure override returns (IKeyRegistry) {
-    return IKeyRegistry(_getArgAddress(72));
+    return IKeyRegistry(_getArgAddress(92));
   }
 
-  
+  /// @inheritdoc FarcasterDelegator
+  function signedKeyRequestValidator() public pure override returns (address) {
+    return _getArgAddress(112);
+  }
 
   /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
@@ -102,10 +106,11 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
   /// @inheritdoc FarcasterDelegator
   // TODO handle transfer signatures so that this contract can receive fid transfers
   // TODO support multiple hats?
-  // TODO differentially validate by caller context, ie only authorize hat-wearers for certain functions?
   function _isValidSigner(bytes32 _typeHash, address _signer) internal view override returns (bool) {
-    /// @dev Valid signers are addresses that are current wearing the {hatId} hat
-    if (_typeHash == ADD_TYPEHASH) return HATS().isWearerOfHat(_signer, hatId());
+    /// @dev Valid signers for adding a new key are addresses that are currently wearing the {hatId} hat
+    if (_typeHash == ADD_TYPEHASH || _typeHash == SIGNED_KEY_REQUEST_TYPEHASH) {
+      return HATS().isWearerOfHat(_signer, hatId());
+    }
 
     return false;
   }
