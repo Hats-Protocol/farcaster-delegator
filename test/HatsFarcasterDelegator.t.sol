@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.21;
 
 import { Test, console2 } from "forge-std/Test.sol";
-// import { Wallet } from "forge-std/Vm.sol";
-import { FDTest } from "./FarcasterDelegator.t.sol";
+import { ForkTest } from "./Base.t.sol";
 import { HatsFarcasterDelegator } from "../src/HatsFarcasterDelegator.sol";
 import { Deploy } from "../script/HatsFarcasterDelegator.s.sol";
 import {
@@ -16,55 +15,50 @@ import { KeyRegistry } from "farcaster/KeyRegistry.sol";
 import { SignedKeyRequestValidator } from "farcaster/validators/SignedKeyRequestValidator.sol";
 import { EIP712 } from "solady/utils/EIP712.sol";
 
-struct Wallet {
-  address addr;
-  uint256 publicKeyX;
-  uint256 publicKeyY;
-  uint256 privateKey;
-}
+/* solhint-disable state-visibility */
 
-contract ModuleTest is Deploy, FDTest {
+contract ModuleTest is Deploy, ForkTest {
   /// @dev variables inherited from Deploy script
   // HatsFarcasterDelegator public implementation;
   // bytes32 public SALT;
 
-  /// @dev variables inherited from FDTest
+  /// @dev variables inherited from ForkTest
   // address public recovery = makeAddr("recovery");
   // uint256 public fid;
   // IIdRegistry public idRegistry = IIdRegistry(0x00000000FcAf86937e41bA038B4fA40BAA4B780A);
-  // address public trustedCaller;
+  // IKeyRegistry public keyRegistry_ = IKeyRegistry(0x00000000fC9e66f1c6d86D750B4af47fF0Cc343d);
+  // KeyRegistry public keyRegistry = KeyRegistry(address(keyRegistry_));
+  // address public signedKeyRequestValidator = 0x00000000FC700472606ED4fA22623Acf62c60553;
   // uint256 public fork;
   // uint256 public BLOCK_NUMBER = 110_694_600; // after idRegistry was taked out of trusted mode
 
   IHats public HATS = IHats(0x3bc1A0Ad72417f2d411118085256fC53CBdDd137); // v1.hatsprotocol.eth
-  HatsModuleFactory public factory;
+  HatsModuleFactory public factory = HatsModuleFactory(0xfE661c01891172046feE16D3a57c3Cf456729efA);
   HatsFarcasterDelegator public instance;
   bytes public otherImmutableArgs;
   bytes public initArgs;
 
-  KeyRegistry public keyRegistry = KeyRegistry(0x00000000fC9e66f1c6d86D750B4af47fF0Cc343d);
-  SignedKeyRequestValidator public signedKeyRequestValidator =
-    SignedKeyRequestValidator(0x00000000FC700472606ED4fA22623Acf62c60553);
-
   uint256 public tophat;
   uint256 public casterHat;
+  uint256 public adminHat;
 
   address public org = makeAddr("org");
   address public caster1;
   address public caster2;
+  address public admin;
   address public nonWearer;
   uint256 public caster1Key;
   uint256 public caster2Key;
+  uint256 public adminKey;
   uint256 public nonWearerKey;
   address public eligibility = makeAddr("eligibility");
   address public toggle = makeAddr("toggle");
 
   string public MODULE_VERSION;
 
-  bytes32 public ADD;
-  bytes32 public REMOVE;
-  bytes32 public TRANSFER;
-  bytes32 public CHANGE_RECOVERY_ADDRESS;
+  bytes32 public digest;
+  address public owner;
+  uint256 public nonce;
 
   bytes public sig;
   uint8 public v;
@@ -73,8 +67,11 @@ contract ModuleTest is Deploy, FDTest {
   bytes4 public constant ERC1271_MAGICVALUE = 0x1626ba7e; // bytes4(keccak256("isValidSignature(bytes32,bytes)")
 
   function setUp() public virtual override {
+    super.setUp();
+
     (caster1, caster1Key) = makeAddrAndKey("caster1");
     (caster2, caster2Key) = makeAddrAndKey("caster2");
+    (admin, adminKey) = makeAddrAndKey("admin");
     (nonWearer, nonWearerKey) = makeAddrAndKey("nonWearer");
 
     // create and activate a fork, at BLOCK_NUMBER
@@ -84,14 +81,11 @@ contract ModuleTest is Deploy, FDTest {
     prepare(false, MODULE_VERSION);
     run();
 
-    // deploy the hats module factory
-    factory = deployModuleFactory(HATS, SALT, "test factory");
-
     // set the Farcaster typehashes
-    ADD = keyRegistry.ADD_TYPEHASH();
-    REMOVE = keyRegistry.REMOVE_TYPEHASH();
-    TRANSFER = idRegistry.TRANSFER_TYPEHASH();
-    CHANGE_RECOVERY_ADDRESS = idRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH();
+    // ADD = keyRegistry.ADD_TYPEHASH();
+    // REMOVE = keyRegistry.REMOVE_TYPEHASH();
+    // TRANSFER = idRegistry.TRANSFER_TYPEHASH();
+    // CHANGE_RECOVERY_ADDRESS = idRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH();
   }
 }
 
@@ -102,12 +96,15 @@ contract WithInstanceTest is ModuleTest {
     // set up the hats
     tophat = HATS.mintTopHat(address(this), "org", "tophat.org/image");
     casterHat = HATS.createHat(tophat, "caster hat", 2, eligibility, toggle, true, "casterhat.tophat.org/image");
+    adminHat = HATS.createHat(tophat, "admin hat", 1, eligibility, toggle, true, "adminhat.tophat.org/image");
     HATS.mintHat(casterHat, caster1);
     HATS.mintHat(casterHat, caster2);
+    HATS.mintHat(adminHat, admin);
     HATS.transferHat(tophat, address(this), org);
 
     // set up the other immutable args
-    otherImmutableArgs = abi.encodePacked(address(idRegistry), address(keyRegistry), address(signedKeyRequestValidator));
+    otherImmutableArgs =
+      abi.encodePacked(adminHat, address(idRegistry), address(keyRegistry), signedKeyRequestValidator);
 
     // set up the instance with an empty recovery address to denote that it should not register a hat for itself
     initArgs = abi.encode(address(0));
@@ -167,222 +164,327 @@ contract IsValidSigner is WithInstanceTest {
     assertFalse(instance.isValidSigner(ADD, caster1));
     assertFalse(instance.isValidSigner(ADD, caster2));
   }
-}
 
-contract WithFarcasterHelpers is WithInstanceTest {
-  function _encodeAddKeyData(
-    address _owner,
-    uint32 _keyType,
-    bytes memory _key,
-    uint8 _metadataType,
-    bytes memory _metadata,
-    uint256 _nonce,
-    uint256 _deadline
-  ) internal view returns (bytes memory) {
-    return abi.encode(
-      keyRegistry.ADD_TYPEHASH(), // 32
-      _owner, // 64
-      _keyType, // 96
-      keccak256(_key), // 128
-      _metadataType, // 136
-      keccak256(_metadata),
-      _nonce,
-      _deadline
-    );
+  function test_removeKey_valid() public {
+    assertTrue(instance.isValidSigner(REMOVE, admin));
   }
 
-  function _buildKeyRegistryDigest(bytes memory _data) internal view returns (bytes32) {
-    return keyRegistry.hashTypedDataV4(keccak256(_data));
-    // return keccak256(_data);
+  function test_removeKey_invalid() public {
+    assertFalse(instance.isValidSigner(REMOVE, nonWearer));
   }
 
-  /// @dev modified from
-  /// https://github.com/farcasterxyz/contracts/blob/74784dc6a976be72e9a234df294627f953ac9776/test/KeyRegistry/KeyRegistryTestSuite.sol#L36
-  function _signAdd(
-    uint256 _pk,
-    address _owner,
-    uint32 _keyType,
-    bytes memory _key,
-    uint8 _metadataType,
-    bytes memory _metadata,
-    uint256 _nonce,
-    uint256 _deadline
-  ) internal returns (bytes memory _signature) {
-    // encode the data
-    bytes memory data = _encodeAddKeyData(_owner, _keyType, _key, _metadataType, _metadata, _nonce, _deadline);
-
-    // build the digest
-    bytes32 digest = _buildKeyRegistryDigest(data);
-
-    // sign it to generate the preliminary signature
-    (uint8 v, bytes32 r, bytes32 s) = vm.sign(_pk, digest);
-    _signature = abi.encodePacked(r, s, v);
-
-    // assert that the preliminary signature is the correct length
-    assertEq(_signature.length, 65);
-
-    // append the encoded data to the signature
-    _signature = abi.encodePacked(_signature, data);
+  function test_transfer_valid() public {
+    assertTrue(instance.isValidSigner(TRANSFER, admin));
   }
 
-  function _encodeSignedKeyRequestData(
-    SignedKeyRequestValidator _validator,
-    uint256 _fid,
-    bytes memory _key,
-    uint256 _deadline
-  ) internal view returns (bytes memory) {
-    return abi.encode(_validator.METADATA_TYPEHASH(), _fid, keccak256(_key), _deadline);
+  function test_transfer_invalid() public {
+    assertFalse(instance.isValidSigner(TRANSFER, nonWearer));
   }
 
-  function _signKeyRequest(
-    SignedKeyRequestValidator _validator,
-    uint256 _fid,
-    uint256 _pk,
-    bytes memory _key,
-    uint256 _deadline
-  ) internal returns (bytes memory) {
-    // encode the data
-    bytes memory data = _encodeSignedKeyRequestData(_validator, _fid, _key, _deadline);
-
-    // build the digest
-    bytes32 digest = _validator.hashTypedDataV4(keccak256(data));
-
-    // sign it to generate the preliminary signature
-    (uint8 v, bytes32 r, bytes32 s) = vm.sign(_pk, digest);
-    bytes memory signature = abi.encodePacked(r, s, v);
-
-    // assert that the preliminary signature is the correct length
-    assertEq(signature.length, 65);
-
-    // append the encoded data to the signature
-    return abi.encodePacked(signature, data);
+  function test_changeRecoveryAddress_valid() public {
+    assertTrue(instance.isValidSigner(CHANGE_RECOVERY_ADDRESS, admin));
   }
 
-  function _buildSignedKeyRequestMetadata(
-    SignedKeyRequestValidator _validator,
-    uint256 _fid,
-    uint256 _pk,
-    address _owner,
-    bytes memory _key,
-    uint256 _deadline
-  ) internal returns (bytes memory) {
-    bytes memory signature = _signKeyRequest(_validator, _fid, _pk, _key, _deadline);
+  function test_changeRecoveryAddress_invalid() public {
+    assertFalse(instance.isValidSigner(CHANGE_RECOVERY_ADDRESS, nonWearer));
+  }
 
-    return abi.encode(
-      SignedKeyRequestValidator.SignedKeyRequestMetadata({
-        requestFid: _fid,
-        requestSigner: _owner,
-        signature: signature,
-        deadline: _deadline
-      })
-    );
+  function test_signKeyRequest_valid() public {
+    assertTrue(instance.isValidSigner(SIGNED_KEY_REQUEST, caster1));
+    assertTrue(instance.isValidSigner(SIGNED_KEY_REQUEST, caster2));
+  }
+
+  function test_signKeyRequest_invalid() public {
+    assertFalse(instance.isValidSigner(SIGNED_KEY_REQUEST, nonWearer));
   }
 }
 
-contract IsValidSignature is WithFarcasterHelpers {
+contract Register is WithInstanceTest {
+  function test_isOrg() public {
+    vm.prank(admin);
+    fid = instance.register(org);
+
+    assertEq(fid, idRegistry.idOf(address(instance)));
+  }
+}
+
+contract IsValidSignature_AddKey is WithInstanceTest {
   bytes public addKeyData;
-  bytes32 public digest;
 
-  address _owner;
-  uint32 _keyType;
-  bytes _key;
-  uint8 _metadataType;
-  bytes _metadata;
-  uint256 _nonce;
-  uint256 _deadline;
-
-  function test_valid() public {
+  function test_valid_hatId_addKey() public {
     // set up dummy add key data
-    _owner = address(1234);
-    _keyType = 1;
-    _key = abi.encode("key");
-    _metadataType = 1;
-    _metadata = abi.encode("metadata");
-    _nonce = 1;
-    _deadline = 1;
-
-    console2.log("test:keyRegistry", address(keyRegistry));
+    owner = address(1234);
+    keyType = 1;
+    metadataType = 1;
+    metadata = abi.encode("metadata");
+    nonce = 1;
+    deadline = 1;
 
     // encode add key data
-    addKeyData = _encodeAddKeyData(_owner, _keyType, _key, _metadataType, _metadata, _nonce, _deadline);
-    console2.log("addKeyData", vm.toString(addKeyData));
-    console2.log("test:keccak-ed addKeyData", vm.toString(keccak256(addKeyData)));
+    addKeyData = _encodeAddKeyData(owner, keyType, key, metadataType, metadata, nonce, deadline);
 
     // prepare the digest
     digest = _buildKeyRegistryDigest(addKeyData);
-    console2.log("digest", vm.toString(digest));
 
     // sign it, appending the encoded data to the signature
-    sig = _signAdd(caster1Key, _owner, _keyType, _key, _metadataType, _metadata, _nonce, _deadline);
-    console2.log("caster1", caster1);
+    sig = _signAddKey(caster1Key, owner, keyType, key, metadataType, metadata, nonce, deadline);
 
     assertEq(instance.isValidSignature(digest, sig), ERC1271_MAGICVALUE);
   }
 
-  function test_invalid() public {
+  function test_valid_adminHat_addKey() public {
     // set up dummy add key data
-    _owner = address(1234);
-    _keyType = 1;
-    _key = abi.encode("key");
-    _metadataType = 1;
-    _metadata = abi.encode("metadata");
-    _nonce = 1;
-    _deadline = 1;
+    owner = address(1234);
+    keyType = 1;
+    metadataType = 1;
+    metadata = abi.encode("metadata");
+    nonce = 1;
+    deadline = 1;
 
     // encode add key data
-    addKeyData = _encodeAddKeyData(_owner, _keyType, _key, _metadataType, _metadata, _nonce, _deadline);
-    console2.log("addKeyData", vm.toString(addKeyData));
+    addKeyData = _encodeAddKeyData(owner, keyType, key, metadataType, metadata, nonce, deadline);
 
     // prepare the digest
     digest = _buildKeyRegistryDigest(addKeyData);
-    console2.log("digest", vm.toString(digest));
 
     // sign it, appending the encoded data to the signature
-    sig = _signAdd(nonWearerKey, _owner, _keyType, _key, _metadataType, _metadata, _nonce, _deadline);
-    console2.log("nonWearer", nonWearer);
+    sig = _signAddKey(adminKey, owner, keyType, key, metadataType, metadata, nonce, deadline);
+
+    assertEq(instance.isValidSignature(digest, sig), ERC1271_MAGICVALUE);
+  }
+
+  function test_invalid_nonWearer_addKey() public {
+    // set up dummy add key data
+    owner = address(1234);
+    keyType = 1;
+    metadataType = 1;
+    metadata = abi.encode("metadata");
+    nonce = 1;
+    deadline = 1;
+
+    // encode add key data
+    addKeyData = _encodeAddKeyData(owner, keyType, key, metadataType, metadata, nonce, deadline);
+
+    // prepare the digest
+    digest = _buildKeyRegistryDigest(addKeyData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signAddKey(nonWearerKey, owner, keyType, key, metadataType, metadata, nonce, deadline);
 
     assertEq(instance.isValidSignature(digest, sig), bytes4(0));
   }
 }
 
-contract AddCasterKeyViaClient is WithFarcasterHelpers {
-  SignedKeyRequestValidator public validator = SignedKeyRequestValidator(0x00000000FC700472606ED4fA22623Acf62c60553);
+contract IsValidSignature_SignedKeyRequest is WithInstanceTest {
+  bytes public signedKeyRequestData;
+  SignedKeyRequestValidator public validator;
+
+  function setUp() public override {
+    super.setUp();
+
+    // set up the validator
+    validator = SignedKeyRequestValidator(signedKeyRequestValidator);
+  }
+
+  function test_valid_adminHat_signedKeyRequest() public {
+    // set up dummy signed key request data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode signed key request data
+    signedKeyRequestData = _encodeSignedKeyRequestData(validator, fid, key, deadline);
+
+    // prepare the digest
+    digest = validator.hashTypedDataV4(keccak256(signedKeyRequestData));
+
+    // sign it, appending the encoded data to the signature
+    sig = _signKeyRequest(validator, fid, adminKey, key, deadline);
+
+    // assert that the signature is valid
+    assertEq(instance.isValidSignature(digest, sig), ERC1271_MAGICVALUE);
+  }
+
+  function test_valid_hatId_signedKeyRequest() public {
+    // set up dummy signed key request data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode signed key request data
+    signedKeyRequestData = _encodeSignedKeyRequestData(validator, fid, key, deadline);
+
+    // prepare the digest
+    digest = validator.hashTypedDataV4(keccak256(signedKeyRequestData));
+
+    // sign it, appending the encoded data to the signature
+    sig = _signKeyRequest(validator, fid, caster1Key, key, deadline);
+
+    // assert that the signature is valid
+    assertEq(instance.isValidSignature(digest, sig), ERC1271_MAGICVALUE);
+  }
+
+  function test_invalid_nonWearer_signedKeyRequest() public {
+    // set up dummy signed key request data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode signed key request data
+    signedKeyRequestData = _encodeSignedKeyRequestData(validator, fid, key, deadline);
+
+    // prepare the digest
+    digest = validator.hashTypedDataV4(keccak256(signedKeyRequestData));
+
+    // sign it, appending the encoded data to the signature
+    sig = _signKeyRequest(validator, fid, nonWearerKey, key, deadline);
+
+    // assert that the signature is invalid
+    assertEq(instance.isValidSignature(digest, sig), bytes4(0));
+  }
+}
+
+contract IsValidSignature_RemoveKey is WithInstanceTest {
+  bytes public removeKeyData;
+
+  function test_valid_adminHat_removeKey() public {
+    // set up dummy remove key data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode remove key data
+    removeKeyData = _encodeRemoveKeyData(owner, key, deadline);
+
+    // prepare the digest
+    digest = _buildKeyRegistryDigest(removeKeyData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signRemoveKey(adminKey, owner, key, deadline);
+
+    // assert that the signature is valid
+    assertEq(instance.isValidSignature(digest, sig), ERC1271_MAGICVALUE);
+  }
+
+  function test_invalid_nonAdmin_removeKey() public {
+    // set up dummy remove key data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode remove key data
+    removeKeyData = _encodeRemoveKeyData(owner, key, deadline);
+
+    // prepare the digest
+    digest = _buildKeyRegistryDigest(removeKeyData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signRemoveKey(nonWearerKey, owner, key, deadline);
+
+    // assert that the signature is invalid
+    assertEq(instance.isValidSignature(digest, sig), bytes4(0));
+  }
+}
+
+contract IsValidSignature_Transfer is WithInstanceTest {
+  bytes public transferData;
+  address public recipient = makeAddr("recipient");
+
+  function test_valid_adminHat_transfer() public {
+    // set up dummy transfer data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode transfer data
+    transferData = _encodeTransferData(fid, recipient, deadline, owner);
+
+    // prepare the digest
+    digest = _buildIdRegistryDigest(transferData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signTransfer(adminKey, fid, recipient, deadline, owner);
+
+    // assert that the signature is valid
+    assertEq(instance.isValidSignature(digest, sig), ERC1271_MAGICVALUE);
+  }
+
+  function test_invalid_nonWearer_transfer() public {
+    // set up dummy transfer data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode transfer data
+    transferData = _encodeTransferData(fid, recipient, deadline, owner);
+
+    // prepare the digest
+    digest = _buildIdRegistryDigest(transferData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signTransfer(nonWearerKey, fid, recipient, deadline, owner);
+
+    // assert that the signature is invalid
+    assertEq(instance.isValidSignature(digest, sig), bytes4(0));
+  }
+}
+
+contract IsValidSignature_ChangeRecoveryAddress is WithInstanceTest {
+  bytes public changeRecoveryAddressData;
+  address public newRecovery = makeAddr("newRecovery");
+
+  function test_valid_adminHat_changeRecoveryAddress() public {
+    // set up dummy change recovery address data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode change recovery address data
+    changeRecoveryAddressData = _encodeChangeRecoveryAddressData(fid, newRecovery, owner, deadline);
+
+    // prepare the digest
+    digest = _buildIdRegistryDigest(changeRecoveryAddressData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signChangeRecoveryAddress(adminKey, fid, newRecovery, owner, deadline);
+
+    // assert that the signature is valid
+    assertEq(instance.isValidSignature(digest, sig), ERC1271_MAGICVALUE);
+  }
+
+  function test_invalid_nonWearer_changeRecoveryAddress() public {
+    // set up dummy change recovery address data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode change recovery address data
+    changeRecoveryAddressData = _encodeChangeRecoveryAddressData(fid, newRecovery, owner, deadline);
+
+    // prepare the digest
+    digest = _buildIdRegistryDigest(changeRecoveryAddressData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signChangeRecoveryAddress(nonWearerKey, fid, newRecovery, owner, deadline);
+
+    // assert that the signature is invalid
+    assertEq(instance.isValidSignature(digest, sig), bytes4(0));
+  }
+}
+
+contract AddCasterKeyViaClient is WithInstanceTest {
   address public client = makeAddr("client");
-  bytes public addSig;
+  bytes public addKeySig;
   bytes public addRequestSig;
 
-  uint32 public keyType;
-  uint8 public metadataType;
-  bytes public metadata;
-  uint256 public deadline;
-
-  /// @dev from
-  /// https://github.com/farcasterxyz/contracts/blob/74784dc6a976be72e9a234df294627f953ac9776/test/KeyRegistry/KeyRegistry.t.sol#L1279
-  function assertEq(IKeyRegistry.KeyState a, IKeyRegistry.KeyState b) internal {
-    assertEq(uint8(a), uint8(b));
-  }
-
-  function assertAdded(uint256 _fid, bytes memory _key, uint32 _keyType) internal {
-    assertEq(keyRegistry.keyDataOf(_fid, _key).state, IKeyRegistry.KeyState.ADDED);
-    assertEq(keyRegistry.keyDataOf(_fid, _key).keyType, _keyType);
-  }
-
   function test_happy() public {
-    // org registers a new fid via its HatsFarcasterDelegator instance
-    vm.prank(org);
+    // admin registers a new fid via its HatsFarcasterDelegator instance
+    vm.prank(admin);
     fid = instance.register(org);
 
     // client generates a key for caster1
-    bytes memory key = abi.encode(keccak256("key"));
+    key;
 
     // client prepares the parameters for the addFor method call
     keyType = 1;
     deadline = block.timestamp + 1 days;
     metadataType = 1; // SignedKeyRequestMetadata
-    metadata = _buildSignedKeyRequestMetadata(validator, fid, caster1Key, address(instance), key, deadline);
+    metadata =
+      _buildSignedKeyRequestMetadata(signedKeyRequestValidator, fid, caster1Key, address(instance), key, deadline);
 
     // caster signs the digest and appends the encoded typed data to the signature
-    addSig = _signAdd(
+    addKeySig = _signAddKey(
       caster1Key,
       address(instance),
       keyType,
@@ -393,11 +495,9 @@ contract AddCasterKeyViaClient is WithFarcasterHelpers {
       deadline
     );
 
-    console2.log("addSig length", addSig.length);
-
     // client calls addFor with the signature
     vm.prank(client);
-    keyRegistry.addFor(address(instance), keyType, key, metadataType, metadata, deadline, addSig);
+    keyRegistry.addFor(address(instance), keyType, key, metadataType, metadata, deadline, addKeySig);
 
     // internally, keyRegistry attempts to validate the signature, which results in an isValidSignature call to our
     // instance

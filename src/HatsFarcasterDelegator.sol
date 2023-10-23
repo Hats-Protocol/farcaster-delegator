@@ -47,25 +47,37 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
    * 0       | IMPLEMENTATION             | address       | 20      | HatsModule |
    * 20      | HATS                       | address       | 20      | HatsModule |
    * 40      | hatId                      | uint256       | 32      | HatsModule |
-   * 72      | idRegistry                 | IIdRegistry   | 20      | this       |
-   * 92      | keyRegistry                | IKeyRegistry  | 20      | this       |
-   * 112     | signedKeyRequestValidator  | address       | 20      | this       |
+   * 72      | adminHat                   | uint256       | 32      | this       |
+   * 104     | idRegistry                 | IIdRegistry   | 20      | this       |
+   * 124     | keyRegistry                | IKeyRegistry  | 20      | this       |
+   * 144     | signedKeyRequestValidator  | address       | 20      | this       |
    * ----------------------------------------------------------------------------+
    */
 
+  /**
+   * @notice The wearer(s) of this hat can take the following actions on behalf of this contract:
+   *  - Register a fid
+   *  - Transfer the fid to a new owner
+   *  - Change the recovery address of the fid
+   *  - Add a new key for the fid
+   */
+  function adminHat() public pure returns (uint256) {
+    return _getArgUint256(72);
+  }
+
   /// @inheritdoc FarcasterDelegator
   function idRegistry() public pure override returns (IIdRegistry) {
-    return IIdRegistry(_getArgAddress(72));
+    return IIdRegistry(_getArgAddress(104));
   }
 
   /// @inheritdoc FarcasterDelegator
   function keyRegistry() public pure override returns (IKeyRegistry) {
-    return IKeyRegistry(_getArgAddress(92));
+    return IKeyRegistry(_getArgAddress(124));
   }
 
   /// @inheritdoc FarcasterDelegator
   function signedKeyRequestValidator() public pure override returns (address) {
-    return _getArgAddress(112);
+    return _getArgAddress(144);
   }
 
   /*//////////////////////////////////////////////////////////////
@@ -93,10 +105,10 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
                           PUBLIC FUNCTIONS
   //////////////////////////////////////////////////////////////*/
 
-  /// @notice Check whether `_signer` is authorized by this contract for the given `_typeHash` action
-  /// @param _typeHash The typehash of the Farcaster action being authorized.
-  function isValidSigner(bytes32 _typeHash, address _signer) public view returns (bool) {
-    return _isValidSigner(_typeHash, _signer);
+  /// @notice Check whether `_signer` is authorized by this contract for the given `_typehash` action
+  /// @param _typehash The typehash of the Farcaster action being authorized.
+  function isValidSigner(bytes32 _typehash, address _signer) public view returns (bool) {
+    return _isValidSigner(_typehash, _signer);
   }
 
   /*//////////////////////////////////////////////////////////////
@@ -104,16 +116,21 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
   //////////////////////////////////////////////////////////////*/
 
   /// @inheritdoc FarcasterDelegator
-  // TODO handle transfer signatures so that this contract can receive fid transfers
-  // TODO support multiple hats?
-  function _isValidSigner(bytes32 _typeHash, address _signer) internal view override returns (bool) {
-    /// @dev Valid signers for adding a new key are addresses that are currently wearing the {hatId} hat
-    if (_typeHash == ADD_TYPEHASH || _typeHash == SIGNED_KEY_REQUEST_TYPEHASH) {
-      return HATS().isWearerOfHat(_signer, hatId());
+  function _isValidSigner(bytes32 _typehash, address _signer) internal view override returns (bool) {
+    // Must be wearing either the {hatId} hat or the {adminHat} to add a new key
+    if (_typehash == ADD_TYPEHASH || _typehash == SIGNED_KEY_REQUEST_TYPEHASH) {
+      return HATS().isWearerOfHat(_signer, hatId()) || HATS().isWearerOfHat(_signer, adminHat());
     }
 
+    // Must be wearing the {adminHat} hat to register, transfer, change recovery address, or remove a key
+    if (
+      _typehash == REGISTER_TYPEHASH || _typehash == TRANSFER_TYPEHASH || _typehash == CHANGE_RECOVERY_ADDRESS_TYPEHASH
+        || _typehash == REMOVE_TYPEHASH
+    ) {
+      return HATS().isWearerOfHat(_signer, adminHat());
+    }
+
+    // no other actions are authorized
     return false;
   }
-
-  function _prepareToReceive(uint256 _fid) internal override { }
 }
