@@ -1,6 +1,36 @@
 # Farcaster Delegator
 
-A contract designed to own a [Farcaster](https://farcaster.xyz) id and grant casting and admin authorities to other actors. This repo contains a generic abstract contract, [`FarcasterDelegator.sol`]((./src/FarcasterDelegator.sol)), as well as an implementation powered by Hats Protocol, [`HatsFarcasterDelegator.sol`](./src/HatsFarcasterDelegator.sol).
+A contract designed to own a [Farcaster](https://farcaster.xyz) id with the goal of delegating casting authority and other fid admin permissions to one or more individuals or groups.
+
+This repo contains a generic abstract contract, [`FarcasterDelegator.sol`](#farcasterdelegatorsol), as well as an implementation powered by [Hats Protocol](https://github.com/hats-protocol/hats-protocol), [`HatsFarcasterDelegator.sol`](#hatsfarcasterdelegatorsol).
+
+It can be useful to think about a FarcasterDelegator contract as a wrapper around an fid that adds more flexibility and control over who can cast from and administer the fid. For example, an organization could use a FarcasterDelegator contract to own an fid and share casting rights among a subset of its members. This use case is especially powerful with HatsFarcasterDelegator, since those rights can be programmed with the full flexibility of Hats Protocol, such as programmatic revocation.
+
+## HatsFarcasterDelegator.sol
+
+[`HatsFarcasterDelegator.sol`](./src/HatsFarcasterDelegator.sol) inherits from [`FarcasterDelegator.sol`](#farcasterdelegatorsol) and implements the `_isValidSigner()` function to authorize signers for various functions via Hats Protocol hats.
+
+### Valid Signers
+
+HatsFarcasterDelegator contracts grant authorities to the wearers of two hats specified at deployment:
+
+The `adminHat` grants authority for all functions. In other words, a user who wears the `adminHat` is a valid signer for the following typehashes:
+
+- IdRegistry.TRANSFER_TYPEHASH()
+- IdRegistry.REGISTER_TYPEHASH()
+- KeyRegistry.ADD_TYPEHASH()
+- SignedKeyRequestValidator.METADATA_TYPEHASH()
+- KeyRegistry.REMOVE_TYPEHASH()
+- IdRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH()
+
+The `hatId` hat — aka the `casterHat` — grants authority to add a key to the contract's fid. This enables the wearer of the `casterHat` to publish casts from the fid. In other words, a user who wears the `casterHat` is a valid signer for the following typehashes:
+
+- KeyRegistry.ADD_TYPEHASH()
+- SignedKeyRequestValidator.METADATA_TYPEHASH()
+
+### Deployment
+
+HatsFarcasterDelegator contracts can be deployed as minimal proxies via the [Hats Module Factory](https://github.com/Hats-Protocol/hats-module/blob/main/src/HatsModuleFactory.sol).
 
 ## FarcasterDelegator.sol
 
@@ -8,14 +38,14 @@ A contract designed to own a [Farcaster](https://farcaster.xyz) id and grant cas
 
 It supports the following functions:
 
-| Function | Related Farcaster Typehash(es) |
-| --- | --- |
-| 1. Receive an existing fid transferred from a different account | IdRegistry.TRANSFER_TYPEHASH() |
-| 2. Register a new fid owned by itself | IdRegistry.REGISTER_TYPEHASH() |
-| 3. Add a key to the fid, e.g. to delegate casting authority | KeyRegistry.ADD_TYPEHASH(), SignedKeyRequestValidator.METADATA_TYPEHASH() |
-| 4. Remove a key from the fid | KeyRegistry.REMOVE_TYPEHASH() |
-| 5. Transfer ownership of the fid to another account | IdRegistry.TRANSFER_TYPEHASH() |
-| 6. Change the recovery address of the fid | IdRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH() |
+| Function                                                        | Related Farcaster Typehash(es)                                            |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| 1. Receive an existing fid transferred from a different account | IdRegistry.TRANSFER_TYPEHASH()                                            |
+| 2. Register a new fid owned by itself                           | IdRegistry.REGISTER_TYPEHASH()                                            |
+| 3. Add a key to the fid, e.g. to delegate casting authority     | KeyRegistry.ADD_TYPEHASH(), SignedKeyRequestValidator.METADATA_TYPEHASH() |
+| 4. Remove a key from the fid                                    | KeyRegistry.REMOVE_TYPEHASH()                                             |
+| 5. Transfer ownership of the fid to another account             | IdRegistry.TRANSFER_TYPEHASH()                                            |
+| 6. Change the recovery address of the fid                       | IdRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH()                             |
 
 Since the [Farcaster contract](https://github.com/farcasterxyz/contracts) functions all have corresponding `<function>For` flavors powered by EIP-712 signatures, each of the above actions can either be initiated by the FarcasterDelegator contract or by a user with a valid signature.
 
@@ -48,11 +78,11 @@ If this check passes, then we can validate the signature itself. Since a valid s
 
 In summary, the `signature` parameter must be formatted as follows:
 
-| Offset | Length | Contents |
-| --- | --- | --- |
-| 0 | 65 | The actual signature |
-| 65 | 32 | The EIP-712 typehash corresponding to the Farcaster function being authorized |
-| 97 | varies | The other EIP-712 typed data parameters for the Farfacster function being authorized |
+| Offset | Length | Contents                                                                             |
+| ------ | ------ | ------------------------------------------------------------------------------------ |
+| 0      | 65     | The actual signature                                                                 |
+| 65     | 32     | The EIP-712 typehash corresponding to the Farcaster function being authorized        |
+| 97     | varies | The other EIP-712 typed data parameters for the Farfacster function being authorized |
 
 ### 1. Receiving an existing fid
 
@@ -194,31 +224,7 @@ Then, anybody in possession of the final hashed typed data and signature blob �
 > [!NOTE]
 > Farcaster clients or other apps can help users prepare the typed data and signature. It's likely that this will be the most common way FarcasterDelegator contracts are used.
 
-## HatsFarcasterDelegator.sol
 
-This contract inherits from `FarcasterDelegator.sol` and implements the `_isValidSigner()` function to authorize signers via Hats Protocol hats.
-
-### Deployment
-
-HatsFarcasterDelegator contracts can be deployed as minimal proxies via the [Hats Module Factory](https://github.com/Hats-Protocol/hats-module/blob/main/src/HatsModuleFactory.sol).
-
-### Valid Signers
-
-HatsFarcasterDelegator contracts grant authorities to the wearers of two hats specified at deployment:
-
-The `adminHat` grants authority for all functions. In other words, a user who wears the `adminHat` is a valid signer for the following typehashes:
-
-- IdRegistry.TRANSFER_TYPEHASH()
-- IdRegistry.REGISTER_TYPEHASH()
-- KeyRegistry.ADD_TYPEHASH()
-- SignedKeyRequestValidator.METADATA_TYPEHASH()
-- KeyRegistry.REMOVE_TYPEHASH()
-- IdRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH()
-
-The `hatId` hat — aka the `casterHat` — grants authority to add a key to the contract's fid. This enables the wearer of the `casterHat` to publish casts from the fid. In other words, a user who wears the `casterHat` is a valid signer for the following typehashes:
-
-- KeyRegistry.ADD_TYPEHASH()
-- SignedKeyRequestValidator.METADATA_TYPEHASH()
 
 ## Development
 
