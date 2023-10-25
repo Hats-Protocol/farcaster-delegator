@@ -85,31 +85,31 @@ abstract contract FarcasterDelegator is IERC1271 {
   //////////////////////////////////////////////////////////////*/
 
   /// See {IIdRegistry.register}
-  function register(address _recovery) public returns (uint256 fid) {
+  function register(address _recovery) public virtual returns (uint256 fid) {
     _checkValidSigner(REGISTER_TYPEHASH, msg.sender);
     fid = idRegistry().register(_recovery);
   }
 
   /// See {IKeydRegistry.add}
-  function addKey(uint32 _keyType, bytes calldata _key, uint8 _metadataType, bytes calldata _metadata) public {
+  function addKey(uint32 _keyType, bytes calldata _key, uint8 _metadataType, bytes calldata _metadata) public virtual {
     _checkValidSigner(ADD_TYPEHASH, msg.sender);
     keyRegistry().add(_keyType, _key, _metadataType, _metadata);
   }
 
   /// See {IKeyRegistry.remove}
-  function removeKey(bytes calldata _key) public {
+  function removeKey(bytes calldata _key) public virtual {
     _checkValidSigner(REMOVE_TYPEHASH, msg.sender);
     keyRegistry().remove(_key);
   }
 
   /// See {IIdRegistry.transfer}
-  function transferFid(address _to, uint256 _deadline, bytes calldata _sig) public {
+  function transferFid(address _to, uint256 _deadline, bytes calldata _sig) public virtual {
     _checkValidSigner(TRANSFER_TYPEHASH, msg.sender);
     idRegistry().transfer(_to, _deadline, _sig);
   }
 
   /// See {IIdRegistry.changeRecoveryAddress}
-  function changeRecoveryAddress(address _newRecovery) public {
+  function changeRecoveryAddress(address _newRecovery) public virtual {
     _checkValidSigner(CHANGE_RECOVERY_ADDRESS_TYPEHASH, msg.sender);
     idRegistry().changeRecoveryAddress(_newRecovery);
   }
