@@ -69,7 +69,7 @@ Then, the user generates the EIP-712 typed data associated with the `IdRegistry.
 > [!NOTE]
 > Farcaster clients or other apps can help users prepare the typed data and signature. It's likely that this will be the most common way FarcasterDelegator contracts are used.
 
-Then, the owner calls `IdRegistry.transfer()`, with the address of the FarcasterDelegator contract (`to`) and signature (`sig`) as arguments. Since `to` is a contract, the IdRegistry will attempt to verify the signature via EIP-1271, which will result in a call to `FarcasterDelegator.isValidSignature()`. As described [above](#valid-signatures), that function will extract the typehash from the `sig`. 
+Then, the owner calls `IdRegistry.transfer()`, with the address of the FarcasterDelegator contract (`to`) and signature (`sig`) as arguments. Since `to` is a contract, the IdRegistry will attempt to verify the signature via EIP-1271, which will result in a call to `FarcasterDelegator.isValidSignature()`. As described [above](#valid-signatures), that function will extract the typehash from the `sig`.
 
 If the typehash is `TRANSFER_TYPEHASH`, the function will then extract the fid typed data parameter from the `sig`. If the fid is marked as `receivable` in storage, then the signature is considered valid and the transfer will succeed.
 
@@ -109,7 +109,7 @@ Finally, anybody in possession of the final hashed typed data and signature blob
 
 This method is useful for users who are authorized for the `ADD_TYPEHASH` action but are not in a position to make a direct call to the FarcasterDelegator contract, such as when using a Farcaster client that has not implemented specific support for FarcasterDelegator contracts.
 
-The flow is similar to (3a), with one key (no pun intended) difference: instead of the user calling `FarcasterDelegator.addKey()`, the user generates the EIP-712 typed data associated with the `ADD_TYPEHASH`, signs it, and then appends the unhashed typed data bytes to the end of the signature. 
+The flow is similar to (3a), with one key (no pun intended) difference: instead of the user calling `FarcasterDelegator.addKey()`, the user generates the EIP-712 typed data associated with the `ADD_TYPEHASH`, signs it, and then appends the unhashed typed data bytes to the end of the signature.
 
 The user generates the EIP-712 typed data associated with the `ADD_TYPEHASH`, signs it, and then appends the unhashed typed data bytes to the end of the signature.
 
@@ -204,19 +204,21 @@ HatsFarcasterDelegator contracts can be deployed as minimal proxies via the [Hat
 
 ### Valid Signers
 
-HatsFarcasterDelegator contracts grant authorities to the wearers of two hats specified at deployment: 
+HatsFarcasterDelegator contracts grant authorities to the wearers of two hats specified at deployment:
 
-1. The `adminHat` grants authority for all functions. In other words, a user who wears the `adminHat` is a valid signer for the following typehashes:
-  - `IdRegistry.TRANSFER_TYPEHASH()`
-  - `IdRegistry.REGISTER_TYPEHASH()`
-  - `KeyRegistry.ADD_TYPEHASH()`
-  - `SignedKeyRequestValidator.METADATA_TYPEHASH()`
-  - `KeyRegistry.REMOVE_TYPEHASH()`
-  - `IdRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH()`
+The `adminHat` grants authority for all functions. In other words, a user who wears the `adminHat` is a valid signer for the following typehashes:
 
-2. The `hatId` hat — aka the `casterHat` — grants authority to add a key to the contract's fid. This enables the wearer of the `casterHat` to publish casts from the fid. In other words, a user who wears the `casterHat` is a valid signer for the following typehashes:
-  - `KeyRegistry.ADD_TYPEHASH()`
-  - `SignedKeyRequestValidator.METADATA_TYPEHASH()`
+- IdRegistry.TRANSFER_TYPEHASH()
+- IdRegistry.REGISTER_TYPEHASH()
+- KeyRegistry.ADD_TYPEHASH()
+- SignedKeyRequestValidator.METADATA_TYPEHASH()
+- KeyRegistry.REMOVE_TYPEHASH()
+- IdRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH()
+
+The `hatId` hat — aka the `casterHat` — grants authority to add a key to the contract's fid. This enables the wearer of the `casterHat` to publish casts from the fid. In other words, a user who wears the `casterHat` is a valid signer for the following typehashes:
+
+- KeyRegistry.ADD_TYPEHASH()
+- SignedKeyRequestValidator.METADATA_TYPEHASH()
 
 ## Development
 
