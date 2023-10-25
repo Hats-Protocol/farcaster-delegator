@@ -224,8 +224,6 @@ Then, anybody in possession of the final hashed typed data and signature blob â€
 > [!NOTE]
 > Farcaster clients or other apps can help users prepare the typed data and signature. It's likely that this will be the most common way FarcasterDelegator contracts are used.
 
-
-
 ## Development
 
 This repo uses Foundry for development and testing. To get started:
