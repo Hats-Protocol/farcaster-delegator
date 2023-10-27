@@ -6,6 +6,8 @@ This repo contains a generic abstract contract, [`FarcasterDelegator.sol`](#farc
 
 It can be useful to think about a FarcasterDelegator contract as a wrapper around an fid that adds more flexibility and control over who can cast from and administer the fid. For example, an organization could use a FarcasterDelegator contract to own an fid and share casting rights among a subset of its members. This use case is especially powerful with HatsFarcasterDelegator, since those rights can be programmed with the full flexibility of Hats Protocol, such as programmatic revocation.
 
+These docs are currently intended for smart contract developers and Farcaster client developers. Once support is added to at least one Farcaster client, we'll add docs for end users.
+
 ## HatsFarcasterDelegator.sol
 
 [`HatsFarcasterDelegator.sol`](./src/HatsFarcasterDelegator.sol) inherits from [`FarcasterDelegator.sol`](#farcasterdelegatorsol) and implements the `_isValidSigner()` function to authorize signers for various functions via Hats Protocol hats.
@@ -27,10 +29,6 @@ The `hatId` hat — aka the `casterHat` — grants authority to add a key to t
 
 - KeyRegistry.ADD_TYPEHASH()
 - SignedKeyRequestValidator.METADATA_TYPEHASH()
-
-### Deployment
-
-HatsFarcasterDelegator contracts can be deployed as minimal proxies via the [Hats Module Factory](https://github.com/Hats-Protocol/hats-module/blob/main/src/HatsModuleFactory.sol).
 
 ## FarcasterDelegator.sol
 
@@ -60,7 +58,7 @@ function _isValidSigner(bytes32 typehash, address signer) internal view virtual 
 The `typehash` argument is the EIP-712 typehash corresponding to the Farcaster function being authorized. This enables implementers to authorize different signers for different functions.
 
 > [!NOTE]
-> For an example implementation, see the [HatsFarcasterDelegator implementation](./src/HatsFarcasterDelegator.sol#L119).
+> For an example implementation, see the [HatsFarcasterDelegator implementation](https://github.com/Hats-Protocol/farcaster-delegator/blob/main/src/HatsFarcasterDelegator.sol#L119).
 
 ### Valid Signatures
 
