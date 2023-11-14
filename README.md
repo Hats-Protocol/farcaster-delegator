@@ -19,15 +19,15 @@ HatsFarcasterDelegator contracts grant authorities to the wearers of two hats sp
 The `adminHat` grants authority for all functions. In other words, a user who wears the `adminHat` is a valid signer for the following typehashes:
 
 - IdRegistry.TRANSFER_TYPEHASH()
-- IdRegistry.REGISTER_TYPEHASH()
-- KeyRegistry.ADD_TYPEHASH()
+- IdGateway.REGISTER_TYPEHASH()
+- KeyGateway.ADD_TYPEHASH()
 - SignedKeyRequestValidator.METADATA_TYPEHASH()
 - KeyRegistry.REMOVE_TYPEHASH()
 - IdRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH()
 
 The `hatId` hat — aka the `casterHat` — grants authority to add a key to the contract's fid. This enables the wearer of the `casterHat` to publish casts from the fid. In other words, a user who wears the `casterHat` is a valid signer for the following typehashes:
 
-- KeyRegistry.ADD_TYPEHASH()
+- KeyGateway.ADD_TYPEHASH()
 - SignedKeyRequestValidator.METADATA_TYPEHASH()
 
 ## FarcasterDelegator.sol
@@ -39,8 +39,8 @@ It supports the following functions:
 | Function                                                        | Related Farcaster Typehash(es)                                            |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | 1. Receive an existing fid transferred from a different account | IdRegistry.TRANSFER_TYPEHASH()                                            |
-| 2. Register a new fid owned by itself                           | IdRegistry.REGISTER_TYPEHASH()                                            |
-| 3. Add a key to the fid, e.g. to delegate casting authority     | KeyRegistry.ADD_TYPEHASH(), SignedKeyRequestValidator.METADATA_TYPEHASH() |
+| 2. Register a new fid owned by itself                           | IdGateway.REGISTER_TYPEHASH()                                             |
+| 3. Add a key to the fid, e.g. to delegate casting authority     | KeyGateway.ADD_TYPEHASH(), SignedKeyRequestValidator.METADATA_TYPEHASH()  |
 | 4. Remove a key from the fid                                    | KeyRegistry.REMOVE_TYPEHASH()                                             |
 | 5. Transfer ownership of the fid to another account             | IdRegistry.TRANSFER_TYPEHASH()                                            |
 | 6. Change the recovery address of the fid                       | IdRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH()                             |
@@ -105,7 +105,7 @@ If the typehash is `TRANSFER_TYPEHASH`, the function will then extract the fid t
 
 To register a new fid for a FarcasterDelegator contract, they must be a valid signer as determined by `FarcasterDelegator._isValidSigner(REGISTER_TYPEHASH)`.
 
-The user calls `FarcasterDelegator.register()` with the desired recovery address as the sole argument.
+The user calls `FarcasterDelegator.register()` with the desired recovery address and number of extra storage units. This function must be called with msg.value of sufficient native tokens to cover the cost of the storage units.
 
 No EIP-1271 signatures are required for this action.
 
@@ -123,17 +123,17 @@ Firstly, the user must be a valid signer as determined by `FarcasterDelegator._i
 
 The user generates the EIP-712 typed metadata bytes associated with the `SignedKeyRequestValidator.METADATA_TYPEHASH`, hashes it with `SignedKeyRequestValidator.hashTypedDataV4()`, signs it, and appends the unhashed typed data bytes to the end of the signature.
 
-Then, the user generates the EIP-712 typed metadata bytes associated with the `ADD_TYPEHASH`, which includes the `METADATA_TYPEHASH`-related signature blob from above. The user then hashes it with `KeyRegistry.hashTypedDataV4()`, signs it, and appends the unhashed typed data bytes to the end of *that* signature.
+Then, the user generates the EIP-712 typed metadata bytes associated with the `ADD_TYPEHASH`, which includes the `METADATA_TYPEHASH`-related signature blob from above. The user then hashes it with `KeyGateway.hashTypedDataV4()`, signs it, and appends the unhashed typed data bytes to the end of *that* signature.
 
 > [!WARNING]
 > Yes, there are two signatures here, one embedded within the other. The order is important: the `METADATA_TYPEHASH`-related signature must be signed first and then incorporated into the hashed digest that is signed to produce the `ADD_TYPEHASH`-related signature.
 
-Finally, anybody in possession of the final hashed typed data and signature blob — typically a Farcaster client or other app — calls `KeyRegistry.addFor()`, passing in the key, the other `ADD_TYPEHASH`-related typed data parameters, and the metadata bytes as arguments. This function will in turn call `FarcasterDelegator.isValidSignature()` to verify the signature. If the signature is valid, the key will be added to the fid.
+Finally, anybody in possession of the final hashed typed data and signature blob — typically a Farcaster client or other app — calls `KeyGateway.addFor()`, passing in the key, the other `ADD_TYPEHASH`-related typed data parameters, and the metadata bytes as arguments. This function will in turn call `FarcasterDelegator.isValidSignature()` to verify the signature. If the signature is valid, the key will be added to the fid.
 
 > [!NOTE]
 > Farcaster clients or other apps can help users prepare the typed data, signature, and metadata generation. It's likely that this will be the most common way FarcasterDelegator contracts are used.
 
-#### 3b. Adding a key with a signature via `KeyRegistry.addFor()`
+#### 3b. Adding a key with a signature via `KeyGateway.addFor()`
 
 This method is useful for users who are authorized for the `ADD_TYPEHASH` action but are not in a position to make a direct call to the FarcasterDelegator contract, such as when using a Farcaster client that has not implemented specific support for FarcasterDelegator contracts.
 
@@ -141,7 +141,7 @@ The flow is similar to (3a), with one key (no pun intended) difference: instead 
 
 The user generates the EIP-712 typed data associated with the `ADD_TYPEHASH`, signs it, and then appends the unhashed typed data bytes to the end of the signature.
 
-Finally, anybody in possession of the final hashed typed data and signature blob — typically a Farcaster client or other app — can call `KeyRegistry.addFor()`, passing in the key, the other `ADD_TYPEHASH`-related typed data parameters, and the metadata bytes as arguments. This function will call `FarcasterDelegator.isValidSignature()` to verify the signature. If the signature is valid, the key will be added to the fid.
+Finally, anybody in possession of the final hashed typed data and signature blob — typically a Farcaster client or other app — can call `KeyGateway.addFor()`, passing in the key, the other `ADD_TYPEHASH`-related typed data parameters, and the metadata bytes as arguments. This function will call `FarcasterDelegator.isValidSignature()` to verify the signature. If the signature is valid, the key will be added to the fid.
 
 > [!NOTE]
 > Farcaster clients or other apps can help users prepare the typed data, signature, and metadata generation. It's likely that this will be the most common way FarcasterDelegator contracts are used.
