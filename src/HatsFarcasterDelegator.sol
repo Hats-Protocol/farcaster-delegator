@@ -103,19 +103,6 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
   constructor(string memory _version) HatsModule(_version) { }
 
   /*//////////////////////////////////////////////////////////////
-                            INITIALIZER
-  //////////////////////////////////////////////////////////////*/
-
-  /// @inheritdoc HatsModule
-  // function _setUp(bytes calldata _initData) internal override {
-  //   address recovery = abi.decode(_initData, (address));
-
-  //   if (recovery != address(0)) {
-  //     register(recovery);
-  //   }
-  // }
-
-  /*//////////////////////////////////////////////////////////////
                           PUBLIC FUNCTIONS
   //////////////////////////////////////////////////////////////*/
 
