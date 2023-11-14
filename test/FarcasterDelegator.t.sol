@@ -20,11 +20,10 @@ contract MockTest is ForkTest {
     (recovery, recoveryKey) = makeAddrAndKey("recovery");
 
     // deploy the mock
-    mock = new MockFarcasterDelegator(idRegistry, keyRegistry_, signedKeyRequestValidator);
+    mock = new MockFarcasterDelegator(idGateway, idRegistry, keyGateway, keyRegistry_, signedKeyRequestValidator);
 
     // create a new fid for the mock.
-    vm.prank(address(mock));
-    fid = idRegistry.register(recovery);
+    fid = _registerViaGateway(address(mock), recovery);
   }
 }
 
@@ -40,7 +39,7 @@ contract CheckValidSigner is MockTest {
 
   function test_noFid() public {
     // redeploy the mock but don't create an fid for it
-    mock = new MockFarcasterDelegator(idRegistry, keyRegistry_, signedKeyRequestValidator);
+    mock = new MockFarcasterDelegator(idGateway, idRegistry, keyGateway, keyRegistry_, signedKeyRequestValidator);
 
     mock.checkValidSigner(0x0, address(999));
   }
@@ -71,27 +70,28 @@ contract Getters is MockTest {
 }
 
 contract Register is MockTest {
+  error HasId();
+
   function test_noFid() public {
     // redeploy the mock but don't create an fid for it
-    mock = new MockFarcasterDelegator(idRegistry, keyRegistry_, signedKeyRequestValidator);
+    mock = new MockFarcasterDelegator(idGateway, idRegistry, keyGateway, keyRegistry_, signedKeyRequestValidator);
 
     // now register an fid for the mock
-    vm.prank(recovery);
-    fid = mock.register(recovery);
+    fid = _registerViaFarcasterDelegator(address(mock), recovery, recovery);
 
     assertEq(idRegistry.idOf(address(mock)), fid);
     assertEq(idRegistry.recoveryOf(fid), recovery);
   }
 
   function test_revert_hasFid() public {
-    vm.expectRevert(Unauthorized.selector);
-    mock.register(recovery);
+    vm.expectRevert(HasId.selector);
+    fid = _registerViaFarcasterDelegator(address(mock), recovery, recovery);
   }
 
   function test_revert_authorized_hasFid() public {
     vm.prank(recovery);
     vm.expectRevert();
-    mock.register(recovery);
+    fid = _registerViaFarcasterDelegator(address(mock), recovery, recovery);
   }
 }
 
@@ -198,7 +198,7 @@ contract ChangeRecoveryAddress is MockTest {
 contract PrepareToReceive is MockTest {
   function test_happy() public {
     // redeploy the mock but don't create an fid for it
-    mock = new MockFarcasterDelegator(idRegistry, keyRegistry_, signedKeyRequestValidator);
+    mock = new MockFarcasterDelegator(idGateway, idRegistry, keyGateway, keyRegistry_, signedKeyRequestValidator);
 
     fid = 15;
 
@@ -222,13 +222,12 @@ contract Receive is MockTest {
     super.setUp();
 
     // redeploy the mock
-    mock = new MockFarcasterDelegator(idRegistry, keyRegistry_, signedKeyRequestValidator);
+    mock = new MockFarcasterDelegator(idGateway, idRegistry, keyGateway, keyRegistry_, signedKeyRequestValidator);
   }
 
   function test_transfer() public {
     // recovery registers an fid for itself
-    vm.prank(recovery);
-    fid = idRegistry.register(recovery);
+    fid = _registerViaGateway(recovery, recovery);
 
     // recover prepares the mock to receive the fid
     vm.prank(recovery);

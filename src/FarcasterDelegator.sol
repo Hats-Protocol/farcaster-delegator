@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.21;
 
-// import { console2 } from "forge-std/Test.sol"; // remove before deploy
+// import { console2 } from "forge-std/Test.sol"; // comment out before deploy
 import { IERC1271 } from "./interfaces/IERC1271.sol";
 import { ECDSA } from "solady/utils/ECDSA.sol";
 import { IIdRegistry } from "farcaster/interfaces/IIdRegistry.sol";
+import { IIdGateway } from "farcaster/interfaces/IIdGateway.sol";
 import { IKeyRegistry } from "farcaster/interfaces/IKeyRegistry.sol";
+import { IKeyGateway } from "farcaster/interfaces/IKeyGateway.sol";
+import { TransferHelper } from "farcaster/libraries/TransferHelper.sol";
 
 interface EIP712Like {
   function hashTypedDataV4(bytes32 structHash) external view returns (bytes32);
 }
 
 abstract contract FarcasterDelegator is IERC1271 {
+  using TransferHelper for address;
   /*//////////////////////////////////////////////////////////////
                             CUSTOM ERRORS
   //////////////////////////////////////////////////////////////*/
@@ -53,7 +57,7 @@ abstract contract FarcasterDelegator is IERC1271 {
     keccak256("Transfer(uint256 fid,address to,uint256 nonce,uint256 deadline)");
 
   bytes32 public constant CHANGE_RECOVERY_ADDRESS_TYPEHASH =
-    keccak256("ChangeRecoveryAddress(uint256 fid,address recovery,uint256 nonce,uint256 deadline)");
+    keccak256("ChangeRecoveryAddress(uint256 fid,address from,address to,uint256 nonce,uint256 deadline)");
 
   bytes32 public constant SIGNED_KEY_REQUEST_TYPEHASH =
     keccak256("SignedKeyRequest(uint256 requestFid,bytes key,uint256 deadline)");
@@ -71,8 +75,14 @@ abstract contract FarcasterDelegator is IERC1271 {
                                 VIEWS
   //////////////////////////////////////////////////////////////*/
 
+  /// @notice The address of the Farcaster Id Gateway
+  function idGateway() public view virtual returns (IIdGateway) { }
+
   /// @notice The address of the Farcaster Id Registry
   function idRegistry() public view virtual returns (IIdRegistry) { }
+
+  /// @notice The address of the Farcaster Key Gateway
+  function keyGateway() public view virtual returns (IKeyGateway) { }
 
   /// @notice The address of the Farcaster Id Registry
   function keyRegistry() public view virtual returns (IKeyRegistry) { }
@@ -84,16 +94,26 @@ abstract contract FarcasterDelegator is IERC1271 {
                         FARCASTER FUNCTIONS
   //////////////////////////////////////////////////////////////*/
 
-  /// See {IIdRegistry.register}
-  function register(address _recovery) public virtual returns (uint256 fid) {
+  /// See {IIdGateway.register}
+  function register(address _recovery, uint256 _extraStorage)
+    public
+    payable
+    virtual
+    returns (uint256 fid, uint256 overpayment)
+  {
     _checkValidSigner(REGISTER_TYPEHASH, msg.sender);
-    fid = idRegistry().register(_recovery);
+    (fid, overpayment) = idGateway().register{ value: msg.value }(_recovery, _extraStorage);
+
+    // refund any overpayment to the caller
+    if (overpayment > 0) {
+      msg.sender.sendNative(overpayment);
+    }
   }
 
-  /// See {IKeydRegistry.add}
+  /// See {IKeyGateway.add}
   function addKey(uint32 _keyType, bytes calldata _key, uint8 _metadataType, bytes calldata _metadata) public virtual {
     _checkValidSigner(ADD_TYPEHASH, msg.sender);
-    keyRegistry().add(_keyType, _key, _metadataType, _metadata);
+    keyGateway().add(_keyType, _key, _metadataType, _metadata);
   }
 
   /// See {IKeyRegistry.remove}
@@ -170,7 +190,10 @@ abstract contract FarcasterDelegator is IERC1271 {
 
     // Check that the typehash is from a known source and if so set that address as our source for recreating the
     // typed hashed data. Otherwise, return invalid signature.
-    if (typehash == ADD_TYPEHASH || typehash == REMOVE_TYPEHASH) {
+    if (typehash == ADD_TYPEHASH) {
+      // typehash is from keyGateway
+      typehashSource = address(keyGateway());
+    } else if (typehash == REMOVE_TYPEHASH) {
       // typehash is from keyRegistry
       typehashSource = address(keyRegistry());
     } else if (typehash == TRANSFER_TYPEHASH) {
@@ -192,7 +215,7 @@ abstract contract FarcasterDelegator is IERC1271 {
       // call is originating from a SignedKeyRequestValidator
       typehashSource = signedKeyRequestValidator();
     } else {
-      // unknown typehash
+      // unknown or unauthorized typehash
       return bytes4(0);
     }
 
@@ -239,4 +262,10 @@ abstract contract FarcasterDelegator is IERC1271 {
   function supportsInterface(bytes4 _interfaceId) public pure returns (bool) {
     return _interfaceId == type(IERC1271).interfaceId;
   }
+
+  /*//////////////////////////////////////////////////////////////
+                            FALLBACK
+  //////////////////////////////////////////////////////////////*/
+
+  receive() external payable { }
 }

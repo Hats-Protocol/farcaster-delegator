@@ -25,12 +25,15 @@ contract ModuleTest is Deploy, ForkTest {
   /// @dev variables inherited from ForkTest
   // address public recovery = makeAddr("recovery");
   // uint256 public fid;
-  // IIdRegistry public idRegistry = IIdRegistry(0x00000000FcAf86937e41bA038B4fA40BAA4B780A);
-  // IKeyRegistry public keyRegistry_ = IKeyRegistry(0x00000000fC9e66f1c6d86D750B4af47fF0Cc343d);
-  // KeyRegistry public keyRegistry = KeyRegistry(address(keyRegistry_));
-  // address public signedKeyRequestValidator = 0x00000000FC700472606ED4fA22623Acf62c60553;
-  // uint256 public fork;
-  // uint256 public BLOCK_NUMBER = 110_694_600; // after idRegistry was taked out of trusted mode
+  // idGateway_ = IIdGateway(0x00000000Fc25870C6eD6b6c7E41Fb078b7656f69);
+  // idRegistry_ = IIdRegistry(0x00000000Fc6c5F01Fc30151999387Bb99A9f489b);
+  // keyGateway_ = IKeyGateway(0x00000000fC56947c7E7183f8Ca4B62398CaAdf0B);
+  // keyRegistry_ = IKeyRegistry(0x00000000Fc1237824fb747aBDE0FF18990E59b7e);
+  // idGateway = IdGateway(address(idGateway_));
+  // idRegistry = IdRegistry(address(idRegistry_));
+  // keyGateway = KeyGateway(address(keyGateway_));
+  // keyRegistry = KeyRegistry(address(keyRegistry_));
+  // signedKeyRequestValidator = 0x00000000FC700472606ED4fA22623Acf62c60553;
 
   IHats public HATS = IHats(0x3bc1A0Ad72417f2d411118085256fC53CBdDd137); // v1.hatsprotocol.eth
   HatsModuleFactory public factory = HatsModuleFactory(0xfE661c01891172046feE16D3a57c3Cf456729efA);
@@ -82,7 +85,7 @@ contract ModuleTest is Deploy, ForkTest {
     run();
 
     // set the Farcaster typehashes
-    // ADD = keyRegistry.ADD_TYPEHASH();
+    // ADD = keyGateway.ADD_TYPEHASH();
     // REMOVE = keyRegistry.REMOVE_TYPEHASH();
     // TRANSFER = idRegistry.TRANSFER_TYPEHASH();
     // CHANGE_RECOVERY_ADDRESS = idRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH();
@@ -103,15 +106,21 @@ contract WithInstanceTest is ModuleTest {
     HATS.transferHat(tophat, address(this), org);
 
     // set up the other immutable args
-    otherImmutableArgs =
-      abi.encodePacked(adminHat, address(idRegistry), address(keyRegistry), signedKeyRequestValidator);
+    otherImmutableArgs = abi.encodePacked(
+      adminHat,
+      address(idGateway),
+      address(idRegistry),
+      address(keyGateway),
+      address(keyRegistry),
+      signedKeyRequestValidator
+    );
 
     // set up the instance with an empty recovery address to denote that it should not register a hat for itself
     initArgs = abi.encode(address(0));
 
     // deploy an instance of the module
     instance = HatsFarcasterDelegator(
-      deployModuleInstance(factory, address(implementation), casterHat, otherImmutableArgs, initArgs)
+      payable(deployModuleInstance(factory, address(implementation), casterHat, otherImmutableArgs, initArgs))
     );
   }
 }
@@ -201,8 +210,7 @@ contract IsValidSigner is WithInstanceTest {
 
 contract Register is WithInstanceTest {
   function test_isOrg() public {
-    vm.prank(admin);
-    fid = instance.register(org);
+    fid = _registerViaFarcasterDelegator(address(instance), admin, org);
 
     assertEq(fid, idRegistry.idOf(address(instance)));
   }
@@ -224,7 +232,7 @@ contract IsValidSignature_AddKey is WithInstanceTest {
     addKeyData = _encodeAddKeyData(owner, keyType, key, metadataType, metadata, nonce, deadline);
 
     // prepare the digest
-    digest = _buildKeyRegistryDigest(addKeyData);
+    digest = _buildKeyGatewayDigest(addKeyData);
 
     // sign it, appending the encoded data to the signature
     sig = _signAddKey(caster1Key, owner, keyType, key, metadataType, metadata, nonce, deadline);
@@ -245,7 +253,7 @@ contract IsValidSignature_AddKey is WithInstanceTest {
     addKeyData = _encodeAddKeyData(owner, keyType, key, metadataType, metadata, nonce, deadline);
 
     // prepare the digest
-    digest = _buildKeyRegistryDigest(addKeyData);
+    digest = _buildKeyGatewayDigest(addKeyData);
 
     // sign it, appending the encoded data to the signature
     sig = _signAddKey(adminKey, owner, keyType, key, metadataType, metadata, nonce, deadline);
@@ -470,8 +478,7 @@ contract AddCasterKeyViaClient is WithInstanceTest {
 
   function test_happy() public {
     // admin registers a new fid via its HatsFarcasterDelegator instance
-    vm.prank(admin);
-    fid = instance.register(org);
+    fid = _registerViaFarcasterDelegator(address(instance), admin, org);
 
     // client generates a key for caster1
     key;
@@ -497,7 +504,7 @@ contract AddCasterKeyViaClient is WithInstanceTest {
 
     // client calls addFor with the signature
     vm.prank(client);
-    keyRegistry.addFor(address(instance), keyType, key, metadataType, metadata, deadline, addKeySig);
+    keyGateway.addFor(address(instance), keyType, key, metadataType, metadata, deadline, addKeySig);
 
     // internally, keyRegistry attempts to validate the signature, which results in an isValidSignature call to our
     // instance

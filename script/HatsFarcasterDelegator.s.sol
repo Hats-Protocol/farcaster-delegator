@@ -60,7 +60,7 @@ contract DeployPrecompiled is Deploy {
     bytes memory args = abi.encode( /* insert constructor args here */ );
 
     /// @dev Load and deploy pre-compiled ir-optimized bytecode.
-    implementation = HatsFarcasterDelegator(deployCode("optimized-out/Module.sol/Module.json", args));
+    implementation = HatsFarcasterDelegator(payable(deployCode("optimized-out/Module.sol/Module.json", args)));
 
     vm.stopBroadcast();
 
