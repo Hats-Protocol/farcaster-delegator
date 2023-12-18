@@ -6,6 +6,8 @@ This repo contains a generic abstract contract, [`FarcasterDelegator.sol`](#farc
 
 It can be useful to think about a FarcasterDelegator contract as a wrapper around an fid that adds more flexibility and control over who can cast from and administer the fid. For example, an organization could use a FarcasterDelegator contract to own an fid and share casting rights among a subset of its members. This use case is especially powerful with HatsFarcasterDelegator, since those rights can be programmed with the full flexibility of Hats Protocol, such as programmatic revocation.
 
+See the [Diagrams](./diagrams/) directory for a visual representation of how HatsFarcasterDelegator can be used to delegate casting rights and to cast on behalf of an fid owned by a HatsFarcasterDelegator contract.
+
 These docs are currently intended for smart contract developers and Farcaster client developers. Once support is added to at least one Farcaster client, we'll add docs for end users.
 
 ## HatsFarcasterDelegator.sol
