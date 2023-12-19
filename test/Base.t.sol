@@ -2,18 +2,27 @@
 pragma solidity ^0.8.21;
 
 import { Test, console2 } from "forge-std/Test.sol";
+import { FarcasterDelegator } from "../src/FarcasterDelegator.sol";
+import { IIdGateway } from "farcaster/interfaces/IIdGateway.sol";
 import { IIdRegistry } from "farcaster/interfaces/IIdRegistry.sol";
+import { IKeyGateway } from "farcaster/interfaces/IKeyGateway.sol";
 import { IKeyRegistry } from "farcaster/interfaces/IKeyRegistry.sol";
+import { IdGateway } from "farcaster/IdGateway.sol";
 import { IdRegistry } from "farcaster/IdRegistry.sol";
+import { KeyGateway } from "farcaster/KeyGateway.sol";
 import { KeyRegistry } from "farcaster/KeyRegistry.sol";
 import { SignedKeyRequestValidator } from "farcaster/validators/SignedKeyRequestValidator.sol";
 import { IERC1271 } from "../src/interfaces/IERC1271.sol";
 
 contract Base is Test {
   uint256 public fid;
+  IIdGateway public idGateway_;
   IIdRegistry public idRegistry_;
+  IKeyGateway public keyGateway_;
   IKeyRegistry public keyRegistry_;
+  IdGateway public idGateway;
   IdRegistry public idRegistry;
+  KeyGateway public keyGateway;
   KeyRegistry public keyRegistry;
   address public signedKeyRequestValidator;
 
@@ -25,13 +34,37 @@ contract Base is Test {
   event ReadyToReceive(uint256 fid);
 
   // Farcaster TYPEHASHES
-
   bytes32 public REGISTER;
   bytes32 public ADD;
   bytes32 public REMOVE;
   bytes32 public TRANSFER;
   bytes32 public CHANGE_RECOVERY_ADDRESS;
   bytes32 public SIGNED_KEY_REQUEST;
+
+  /*//////////////////////////////////////////////////////////////
+                              REGISTER
+  //////////////////////////////////////////////////////////////*/
+
+  function _registerViaGateway(address _registrant, address _recovery) internal returns (uint256 _fid) {
+    // fund the registrant for their storage
+    vm.deal(_registrant, 1 ether);
+    // impersonate the registrant
+    vm.prank(_registrant);
+    // register with no extra storage
+    (_fid,) = idGateway.register{ value: 1 ether }(_recovery, 0);
+  }
+
+  function _registerViaFarcasterDelegator(address _farcasterDelegator, address _caller, address _recovery)
+    internal
+    returns (uint256 _fid)
+  {
+    // fund the registrant for their storage
+    vm.deal(_caller, 1 ether);
+    // impersonate the registrant
+    vm.prank(_caller);
+    // register with no extra storage
+    (_fid,) = FarcasterDelegator(payable(_farcasterDelegator)).register{ value: 1 ether }(_recovery, 0);
+  }
 
   /*//////////////////////////////////////////////////////////////
                               ADD KEY
@@ -47,7 +80,7 @@ contract Base is Test {
     uint256 _deadline
   ) internal view returns (bytes memory) {
     return abi.encode(
-      keyRegistry.ADD_TYPEHASH(), // 32
+      keyGateway.ADD_TYPEHASH(), // 32
       _owner, // 64
       _keyType, // 96
       keccak256(_key), // 128
@@ -58,8 +91,8 @@ contract Base is Test {
     );
   }
 
-  function _buildKeyRegistryDigest(bytes memory _data) internal view returns (bytes32) {
-    return keyRegistry.hashTypedDataV4(keccak256(_data));
+  function _buildKeyGatewayDigest(bytes memory _data) internal view returns (bytes32) {
+    return keyGateway.hashTypedDataV4(keccak256(_data));
   }
 
   /// @dev modified from
@@ -78,7 +111,7 @@ contract Base is Test {
     bytes memory data = _encodeAddKeyData(_owner, _keyType, _key, _metadataType, _metadata, _nonce, _deadline);
 
     // build the digest
-    bytes32 digest = _buildKeyRegistryDigest(data);
+    bytes32 digest = _buildKeyGatewayDigest(data);
 
     // sign it to generate the preliminary signature
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(_pk, digest);
@@ -154,6 +187,10 @@ contract Base is Test {
     returns (bytes memory)
   {
     return abi.encode(keyRegistry.REMOVE_TYPEHASH(), _owner, keccak256(_key), keyRegistry.nonces(_owner), _deadline);
+  }
+
+  function _buildKeyRegistryDigest(bytes memory _data) internal view returns (bytes32) {
+    return keyRegistry.hashTypedDataV4(keccak256(_data));
   }
 
   function _signRemoveKey(uint256 _pk, address _owner, bytes memory _key, uint256 _deadline)
@@ -280,7 +317,7 @@ contract Base is Test {
 
 contract ForkTest is Base {
   uint256 public fork;
-  uint256 public BLOCK_NUMBER = 110_694_600; // after idRegistry was taken out of trusted mode
+  uint256 public BLOCK_NUMBER = 113_711_971; // December 19, 2023
 
   bytes public signature;
   uint256 public deadline;
@@ -294,14 +331,18 @@ contract ForkTest is Base {
     // create and activate a fork, at BLOCK_NUMBER
     fork = vm.createSelectFork(vm.rpcUrl("optimism"), BLOCK_NUMBER);
 
-    idRegistry_ = IIdRegistry(0x00000000FcAf86937e41bA038B4fA40BAA4B780A);
-    keyRegistry_ = IKeyRegistry(0x00000000fC9e66f1c6d86D750B4af47fF0Cc343d);
+    idGateway_ = IIdGateway(0x00000000Fc25870C6eD6b6c7E41Fb078b7656f69);
+    idRegistry_ = IIdRegistry(0x00000000Fc6c5F01Fc30151999387Bb99A9f489b);
+    keyGateway_ = IKeyGateway(0x00000000fC56947c7E7183f8Ca4B62398CaAdf0B);
+    keyRegistry_ = IKeyRegistry(0x00000000Fc1237824fb747aBDE0FF18990E59b7e);
+    idGateway = IdGateway(payable(address(idGateway_)));
     idRegistry = IdRegistry(address(idRegistry_));
+    keyGateway = KeyGateway(address(keyGateway_));
     keyRegistry = KeyRegistry(address(keyRegistry_));
     signedKeyRequestValidator = 0x00000000FC700472606ED4fA22623Acf62c60553;
 
-    REGISTER = idRegistry.REGISTER_TYPEHASH();
-    ADD = keyRegistry.ADD_TYPEHASH();
+    REGISTER = idGateway.REGISTER_TYPEHASH();
+    ADD = keyGateway.ADD_TYPEHASH();
     REMOVE = keyRegistry.REMOVE_TYPEHASH();
     TRANSFER = idRegistry.TRANSFER_TYPEHASH();
     CHANGE_RECOVERY_ADDRESS = idRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH();

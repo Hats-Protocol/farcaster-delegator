@@ -3,7 +3,9 @@ pragma solidity ^0.8.21;
 
 // import { console2 } from "forge-std/Test.sol"; // remove before deploy
 import { HatsModule } from "hats-module/HatsModule.sol";
-import { FarcasterDelegator, IERC1271, IIdRegistry, IKeyRegistry } from "./FarcasterDelegator.sol";
+import {
+  FarcasterDelegator, IERC1271, IIdGateway, IIdRegistry, IKeyGateway, IKeyRegistry
+} from "./FarcasterDelegator.sol";
 
 /*
 Design considerations/questions:
@@ -47,10 +49,12 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
    * 0       | IMPLEMENTATION             | address       | 20      | HatsModule |
    * 20      | HATS                       | address       | 20      | HatsModule |
    * 40      | hatId                      | uint256       | 32      | HatsModule |
-   * 72      | adminHat                   | uint256       | 32      | this       |
-   * 104     | idRegistry                 | IIdRegistry   | 20      | this       |
-   * 124     | keyRegistry                | IKeyRegistry  | 20      | this       |
-   * 144     | signedKeyRequestValidator  | address       | 20      | this       |
+   * 72      | ownerHat                   | uint256       | 32      | this       |
+   * 104     | idGateway                  | IIdGateway    | 20      | this       |
+   * 124     | idRegistry                 | IIdRegistry   | 20      | this       |
+   * 144     | keyGateway                 | IKeyGateway   | 20      | this       |
+   * 164     | keyRegistry                | IKeyRegistry  | 20      | this       |
+   * 184     | signedKeyRequestValidator  | address       | 20      | this       |
    * ----------------------------------------------------------------------------+
    */
 
@@ -61,23 +65,33 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
    *  - Change the recovery address of the fid
    *  - Add a new key for the fid
    */
-  function adminHat() public pure returns (uint256) {
+  function ownerHat() public pure returns (uint256) {
     return _getArgUint256(72);
   }
 
   /// @inheritdoc FarcasterDelegator
+  function idGateway() public pure override returns (IIdGateway) {
+    return IIdGateway(_getArgAddress(104));
+  }
+
+  /// @inheritdoc FarcasterDelegator
   function idRegistry() public pure override returns (IIdRegistry) {
-    return IIdRegistry(_getArgAddress(104));
+    return IIdRegistry(_getArgAddress(124));
+  }
+
+  /// @inheritdoc FarcasterDelegator
+  function keyGateway() public pure override returns (IKeyGateway) {
+    return IKeyGateway(_getArgAddress(144));
   }
 
   /// @inheritdoc FarcasterDelegator
   function keyRegistry() public pure override returns (IKeyRegistry) {
-    return IKeyRegistry(_getArgAddress(124));
+    return IKeyRegistry(_getArgAddress(164));
   }
 
   /// @inheritdoc FarcasterDelegator
   function signedKeyRequestValidator() public pure override returns (address) {
-    return _getArgAddress(144);
+    return _getArgAddress(184);
   }
 
   /*//////////////////////////////////////////////////////////////
@@ -87,19 +101,6 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
   /// @notice Deploy the implementation contract and set its version
   /// @dev This is only used to deploy the implementation contract, and should not be used to deploy clones
   constructor(string memory _version) HatsModule(_version) { }
-
-  /*//////////////////////////////////////////////////////////////
-                            INITIALIZER
-  //////////////////////////////////////////////////////////////*/
-
-  /// @inheritdoc HatsModule
-  function _setUp(bytes calldata _initData) internal override {
-    address recovery = abi.decode(_initData, (address));
-
-    if (recovery != address(0)) {
-      register(recovery);
-    }
-  }
 
   /*//////////////////////////////////////////////////////////////
                           PUBLIC FUNCTIONS
@@ -117,17 +118,17 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
 
   /// @inheritdoc FarcasterDelegator
   function _isValidSigner(bytes32 _typehash, address _signer) internal view override returns (bool) {
-    // Must be wearing either the {hatId} hat or the {adminHat} to add a new key
+    // Must be wearing either the {hatId} hat or the {ownerHat} to add a new key
     if (_typehash == ADD_TYPEHASH || _typehash == SIGNED_KEY_REQUEST_TYPEHASH) {
-      return HATS().isWearerOfHat(_signer, hatId()) || HATS().isWearerOfHat(_signer, adminHat());
+      return HATS().isWearerOfHat(_signer, hatId()) || HATS().isWearerOfHat(_signer, ownerHat());
     }
 
-    // Must be wearing the {adminHat} hat to register, transfer, change recovery address, or remove a key
+    // Must be wearing the {ownerHat} hat to register, transfer, change recovery address, or remove a key
     if (
       _typehash == REGISTER_TYPEHASH || _typehash == TRANSFER_TYPEHASH || _typehash == CHANGE_RECOVERY_ADDRESS_TYPEHASH
         || _typehash == REMOVE_TYPEHASH
     ) {
-      return HATS().isWearerOfHat(_signer, adminHat());
+      return HATS().isWearerOfHat(_signer, ownerHat());
     }
 
     // no other actions are authorized

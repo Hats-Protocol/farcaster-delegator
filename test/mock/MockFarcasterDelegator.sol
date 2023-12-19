@@ -1,15 +1,32 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.21;
 
-import { FarcasterDelegator, IIdRegistry, IKeyRegistry } from "../../src/FarcasterDelegator.sol";
+import {
+  FarcasterDelegator,
+  IERC1271,
+  IIdGateway,
+  IIdRegistry,
+  IKeyGateway,
+  IKeyRegistry
+} from "../../src/FarcasterDelegator.sol";
 
 contract MockFarcasterDelegator is FarcasterDelegator {
+  IIdGateway internal _idGateway;
   IIdRegistry internal _idRegistry;
+  IKeyGateway internal _keyGateway;
   IKeyRegistry internal _keyRegistry;
   address internal _signedKeyRequestValidator;
 
+  function idGateway() public view override returns (IIdGateway) {
+    return _idGateway;
+  }
+
   function idRegistry() public view override returns (IIdRegistry) {
     return _idRegistry;
+  }
+
+  function keyGateway() public view override returns (IKeyGateway) {
+    return _keyGateway;
   }
 
   function keyRegistry() public view override returns (IKeyRegistry) {
@@ -20,8 +37,16 @@ contract MockFarcasterDelegator is FarcasterDelegator {
     return _signedKeyRequestValidator;
   }
 
-  constructor(IIdRegistry idRegistry_, IKeyRegistry keyRegistry_, address signedKeyRequestValidator_) {
+  constructor(
+    IIdGateway idGateway_,
+    IIdRegistry idRegistry_,
+    IKeyGateway keyGateway_,
+    IKeyRegistry keyRegistry_,
+    address signedKeyRequestValidator_
+  ) {
+    _idGateway = idGateway_;
     _idRegistry = idRegistry_;
+    _keyGateway = keyGateway_;
     _keyRegistry = keyRegistry_;
     _signedKeyRequestValidator = signedKeyRequestValidator_;
   }

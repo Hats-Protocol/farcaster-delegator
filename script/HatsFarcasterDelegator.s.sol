@@ -42,7 +42,7 @@ contract Deploy is Script {
      *       never differs regardless of where its being compiled
      *    2. The provided salt, `SALT`
      */
-    implementation = new HatsFarcasterDelegator{ salt: SALT}(_version /* insert constructor args here */);
+    implementation = new HatsFarcasterDelegator{ salt: SALT }(_version /* insert constructor args here */ );
 
     vm.stopBroadcast();
 
@@ -60,7 +60,7 @@ contract DeployPrecompiled is Deploy {
     bytes memory args = abi.encode( /* insert constructor args here */ );
 
     /// @dev Load and deploy pre-compiled ir-optimized bytecode.
-    implementation = HatsFarcasterDelegator(deployCode("optimized-out/Module.sol/Module.json", args));
+    implementation = HatsFarcasterDelegator(payable(deployCode("optimized-out/Module.sol/Module.json", args)));
 
     vm.stopBroadcast();
 
