@@ -49,7 +49,7 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
    * 0       | IMPLEMENTATION             | address       | 20      | HatsModule |
    * 20      | HATS                       | address       | 20      | HatsModule |
    * 40      | hatId                      | uint256       | 32      | HatsModule |
-   * 72      | adminHat                   | uint256       | 32      | this       |
+   * 72      | ownerHat                   | uint256       | 32      | this       |
    * 104     | idGateway                  | IIdGateway    | 20      | this       |
    * 124     | idRegistry                 | IIdRegistry   | 20      | this       |
    * 144     | keyGateway                 | IKeyGateway   | 20      | this       |
@@ -65,7 +65,7 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
    *  - Change the recovery address of the fid
    *  - Add a new key for the fid
    */
-  function adminHat() public pure returns (uint256) {
+  function ownerHat() public pure returns (uint256) {
     return _getArgUint256(72);
   }
 
@@ -118,17 +118,17 @@ contract HatsFarcasterDelegator is FarcasterDelegator, HatsModule {
 
   /// @inheritdoc FarcasterDelegator
   function _isValidSigner(bytes32 _typehash, address _signer) internal view override returns (bool) {
-    // Must be wearing either the {hatId} hat or the {adminHat} to add a new key
+    // Must be wearing either the {hatId} hat or the {ownerHat} to add a new key
     if (_typehash == ADD_TYPEHASH || _typehash == SIGNED_KEY_REQUEST_TYPEHASH) {
-      return HATS().isWearerOfHat(_signer, hatId()) || HATS().isWearerOfHat(_signer, adminHat());
+      return HATS().isWearerOfHat(_signer, hatId()) || HATS().isWearerOfHat(_signer, ownerHat());
     }
 
-    // Must be wearing the {adminHat} hat to register, transfer, change recovery address, or remove a key
+    // Must be wearing the {ownerHat} hat to register, transfer, change recovery address, or remove a key
     if (
       _typehash == REGISTER_TYPEHASH || _typehash == TRANSFER_TYPEHASH || _typehash == CHANGE_RECOVERY_ADDRESS_TYPEHASH
         || _typehash == REMOVE_TYPEHASH
     ) {
-      return HATS().isWearerOfHat(_signer, adminHat());
+      return HATS().isWearerOfHat(_signer, ownerHat());
     }
 
     // no other actions are authorized

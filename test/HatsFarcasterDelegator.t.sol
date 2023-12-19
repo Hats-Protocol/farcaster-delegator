@@ -43,7 +43,7 @@ contract ModuleTest is Deploy, ForkTest {
 
   uint256 public tophat;
   uint256 public casterHat;
-  uint256 public adminHat;
+  uint256 public ownerHat;
 
   address public org = makeAddr("org");
   address public caster1;
@@ -78,7 +78,7 @@ contract ModuleTest is Deploy, ForkTest {
     (nonWearer, nonWearerKey) = makeAddrAndKey("nonWearer");
 
     // create and activate a fork, at BLOCK_NUMBER
-    fork = vm.createSelectFork(vm.rpcUrl("optimism"), BLOCK_NUMBER);
+    fork = vm.createSelectFork(vm.rpcUrl("optimism"));
 
     // deploy implementation via the script
     prepare(false, MODULE_VERSION);
@@ -99,15 +99,15 @@ contract WithInstanceTest is ModuleTest {
     // set up the hats
     tophat = HATS.mintTopHat(address(this), "org", "tophat.org/image");
     casterHat = HATS.createHat(tophat, "caster hat", 2, eligibility, toggle, true, "casterhat.tophat.org/image");
-    adminHat = HATS.createHat(tophat, "admin hat", 1, eligibility, toggle, true, "adminhat.tophat.org/image");
+    ownerHat = HATS.createHat(tophat, "admin hat", 1, eligibility, toggle, true, "adminhat.tophat.org/image");
     HATS.mintHat(casterHat, caster1);
     HATS.mintHat(casterHat, caster2);
-    HATS.mintHat(adminHat, admin);
+    HATS.mintHat(ownerHat, admin);
     HATS.transferHat(tophat, address(this), org);
 
     // set up the other immutable args
     otherImmutableArgs = abi.encodePacked(
-      adminHat,
+      ownerHat,
       address(idGateway),
       address(idRegistry),
       address(keyGateway),
@@ -240,7 +240,7 @@ contract IsValidSignature_AddKey is WithInstanceTest {
     assertEq(instance.isValidSignature(digest, sig), ERC1271_MAGICVALUE);
   }
 
-  function test_valid_adminHat_addKey() public {
+  function test_valid_ownerHat_addKey() public {
     // set up dummy add key data
     owner = address(1234);
     keyType = 1;
@@ -294,7 +294,7 @@ contract IsValidSignature_SignedKeyRequest is WithInstanceTest {
     validator = SignedKeyRequestValidator(signedKeyRequestValidator);
   }
 
-  function test_valid_adminHat_signedKeyRequest() public {
+  function test_valid_ownerHat_signedKeyRequest() public {
     // set up dummy signed key request data
     owner = address(1234);
     deadline = 1;
@@ -352,7 +352,7 @@ contract IsValidSignature_SignedKeyRequest is WithInstanceTest {
 contract IsValidSignature_RemoveKey is WithInstanceTest {
   bytes public removeKeyData;
 
-  function test_valid_adminHat_removeKey() public {
+  function test_valid_ownerHat_removeKey() public {
     // set up dummy remove key data
     owner = address(1234);
     deadline = 1;
@@ -393,7 +393,7 @@ contract IsValidSignature_Transfer is WithInstanceTest {
   bytes public transferData;
   address public recipient = makeAddr("recipient");
 
-  function test_valid_adminHat_transfer() public {
+  function test_valid_ownerHat_transfer() public {
     // set up dummy transfer data
     owner = address(1234);
     deadline = 1;
@@ -434,7 +434,7 @@ contract IsValidSignature_ChangeRecoveryAddress is WithInstanceTest {
   bytes public changeRecoveryAddressData;
   address public newRecovery = makeAddr("newRecovery");
 
-  function test_valid_adminHat_changeRecoveryAddress() public {
+  function test_valid_ownerHat_changeRecoveryAddress() public {
     // set up dummy change recovery address data
     owner = address(1234);
     deadline = 1;
