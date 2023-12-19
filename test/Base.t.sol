@@ -317,7 +317,7 @@ contract Base is Test {
 
 contract ForkTest is Base {
   uint256 public fork;
-  uint256 public BLOCK_NUMBER = 112_146_785; // after farcaster 3.1 deployment
+  uint256 public BLOCK_NUMBER = 113_711_971; // December 19, 2023
 
   bytes public signature;
   uint256 public deadline;
