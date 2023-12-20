@@ -1,10 +1,10 @@
 # Farcaster Delegator
 
-A contract designed to own a [Farcaster](https://farcaster.xyz) id with the goal of delegating casting authority and other fid admin permissions to one or more individuals or groups.
+A contract designed to own a [Farcaster](https://farcaster.xyz) id with the goal of delegating casting authority and other fid permissions to one or more individuals or groups.
 
 This repo contains a generic abstract contract, [`FarcasterDelegator.sol`](#farcasterdelegatorsol), as well as an implementation powered by [Hats Protocol](https://github.com/hats-protocol/hats-protocol), [`HatsFarcasterDelegator.sol`](#hatsfarcasterdelegatorsol).
 
-It can be useful to think about a FarcasterDelegator contract as a wrapper around an fid that adds more flexibility and control over who can cast from and administer the fid. For example, an organization could use a FarcasterDelegator contract to own an fid and share casting rights among a subset of its members. This use case is especially powerful with HatsFarcasterDelegator, since those rights can be programmed with the full flexibility of Hats Protocol, such as programmatic revocation.
+It can be useful to think about a FarcasterDelegator contract as a wrapper around an fid that adds more flexibility and control over who can cast from and administer the fid. For example, an organization could use a FarcasterDelegator contract to own an fid and share casting rights among a subset of its members. This use case is especially powerful with HatsFarcasterDelegator, since those rights can be programmed with the full flexibility of Hats Protocol, including programmatic granting and revocation.
 
 See the [Diagrams](./diagrams/) directory for a visual representation of how HatsFarcasterDelegator can be used to delegate casting rights and to cast on behalf of an fid owned by a HatsFarcasterDelegator contract.
 
@@ -16,9 +16,9 @@ These docs are currently intended for smart contract developers and Farcaster cl
 
 ### Valid Signers
 
-HatsFarcasterDelegator contracts grant authorities to the wearers of two hats specified at deployment:
+HatsFarcasterDelegator contracts grant authorities to the wearers of two hats specified at deployment: the `ownerHat` and `casterHat`
 
-The `adminHat` grants authority for all functions. In other words, a user who wears the `adminHat` is a valid signer for the following typehashes:
+The `ownerHat` grants authority for all functions. In other words, a user who wears the `ownerHat` is a valid signer for the following typehashes:
 
 - IdRegistry.TRANSFER_TYPEHASH()
 - IdGateway.REGISTER_TYPEHASH()
@@ -27,7 +27,7 @@ The `adminHat` grants authority for all functions. In other words, a user who we
 - KeyRegistry.REMOVE_TYPEHASH()
 - IdRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH()
 
-The `hatId` hat — aka the `casterHat` — grants authority to add a key to the contract's fid. This enables the wearer of the `casterHat` to publish casts from the fid. In other words, a user who wears the `casterHat` is a valid signer for the following typehashes:
+The `casterHat` — aka the `hatId` — grants authority to add a key to the contract's fid. This enables the wearer of the `casterHat` to publish casts from the fid. In other words, a user who wears the `casterHat` is a valid signer for the following typehashes:
 
 - KeyGateway.ADD_TYPEHASH()
 - SignedKeyRequestValidator.METADATA_TYPEHASH()
@@ -38,7 +38,7 @@ The `hatId` hat — aka the `casterHat` — grants authority to add a key to t
 
 It supports the following functions:
 
-| Function                                                        | Related Farcaster Typehash(es)                                            |
+| Function                                                        | Related Farcaster Typehashes                                              |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | 1. Receive an existing fid transferred from a different account | IdRegistry.TRANSFER_TYPEHASH()                                            |
 | 2. Register a new fid owned by itself                           | IdGateway.REGISTER_TYPEHASH()                                             |
@@ -60,7 +60,7 @@ function _isValidSigner(bytes32 typehash, address signer) internal view virtual 
 The `typehash` argument is the EIP-712 typehash corresponding to the Farcaster function being authorized. This enables implementers to authorize different signers for different functions.
 
 > [!NOTE]
-> For an example implementation, see the [HatsFarcasterDelegator implementation](https://github.com/Hats-Protocol/farcaster-delegator/blob/main/src/HatsFarcasterDelegator.sol#L119).
+> For an example implementation of `FarcasterDelegator._isValidSigner()`, see the [HatsFarcasterDelegator implementation](https://github.com/Hats-Protocol/farcaster-delegator/blob/main/src/HatsFarcasterDelegator.sol#L119).
 
 ### Valid Signatures
 
@@ -70,11 +70,11 @@ This contract, on the other hand, does specify the definition of a valid *signat
 function isValidSignature(bytes32 hash, bytes calldata signature) public view returns (bytes4 magicValue);
 ```
 
-Since `FarcasterDelegator.isValidSignature()` must conform to the above EIP-1271 standard function signature, we cannot explicitly pass it a `typehash` parameter for routing like we can with the `FarcasterDelegator._isValidSigner()`. To enable function-specific validation, then, we require the `typehash` be appended to the `signature` parameter and extract it in the implementation.
+Since `FarcasterDelegator.isValidSignature()` must conform to the above EIP-1271 standard function signature, we cannot explicitly pass it a `typehash` parameter for routing like we can with the `FarcasterDelegator._isValidSigner()`. To enable function-specific validation, then, we require the `typehash` be appended to the `signature` parameter so that we can extract it in the implementation.
 
-To ensure that the `typehash` is valid for the function being called, we also require that the other EIP-1271 typed data parameters be appended to the `signature` parameter. We can validate by extracting those parameters, recreating the correct typed hash using the EIP-712 domain separator from the relevant Farcaster contract, and comparing it to the `hash` parameter.
+To ensure that the `typehash` is valid for the function being called, we also require that the other EIP-712 typed data parameters be appended to the `signature` parameter. We can validate by extracting those parameters, recreating the correct typed hash using the EIP-712 domain separator from the relevant Farcaster contract, and comparing it to the `hash` parameter.
 
-If this check passes, then we can validate the signature itself. Since a valid signature will always be 65 bytes long, the signature will be the first 65 bytes of the `signature` parameter. We then recover the signer from the signature and `hash`. If that signer is valid according to the logic in `FarcasterDelegator._isValidSigner()`, then the signature is deemed valid.
+If this check passes, we can then validate the signature itself. Since a valid signature will always be 65 bytes long, the signature should be the first 65 bytes of the `signature` parameter. We then recover the signer from the signature and `hash`. If that signer is valid according to the logic in `FarcasterDelegator._isValidSigner()`, then the signature is deemed valid.
 
 In summary, the `signature` parameter must be formatted as follows:
 
@@ -82,7 +82,7 @@ In summary, the `signature` parameter must be formatted as follows:
 | ------ | ------ | ------------------------------------------------------------------------------------ |
 | 0      | 65     | The actual signature                                                                 |
 | 65     | 32     | The EIP-712 typehash corresponding to the Farcaster function being authorized        |
-| 97     | varies | The other EIP-712 typed data parameters for the Farfacster function being authorized |
+| 97     | varies | The other EIP-712 typed data parameters for the Farcaster function being authorized |
 
 ### 1. Receiving an existing fid
 
@@ -183,7 +183,7 @@ This method is useful for users who are authorized for the `TRANSFER_TYPEHASH` a
 
 Similar to the receiving flow [receiving an existing fid](#1-receiving-an-existing-fid), the recipient must sign a message authorizing receipt of the fid.
 
-Then, a user who is a valid signer — as determined by `_isValidSigner(TRANSFER_TYPEHASH)` — calls `FarcasterDelegator.transferFid()`; with the recipient address, signature deadline, and signature as arguments. This function calls `IdRegistry.transfer()`, with the same arguments, which then in turn cals `FarcasterDelegator.isValidSignature()` to verify the signature. If the signature is valid, the fid will be transferred to the recipient.
+Then, a user who is a valid signer — as determined by `_isValidSigner(TRANSFER_TYPEHASH)` — calls `FarcasterDelegator.transferFid()`; with the recipient address, signature deadline, and signature as arguments. This function calls `IdRegistry.transfer()`, with the same arguments, which then in turn calls `FarcasterDelegator.isValidSignature()` to verify the signature. If the signature is valid, the fid will be transferred to the recipient.
 
 > [!NOTE]
 > Farcaster clients or other apps can help users prepare the typed data and signature. It's likely that this will be the most common way FarcasterDelegator contracts are used.
