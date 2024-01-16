@@ -28,7 +28,7 @@ contract MockTest is ForkTest {
 }
 
 contract CheckValidSigner is MockTest {
-  function test_hasFid_recovery() public {
+  function test_hasFid_recovery() public view {
     mock.checkValidSigner(0x0, recovery);
   }
 
