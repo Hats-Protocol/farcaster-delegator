@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import { Script, console2 } from "forge-std/Script.sol";
 import { HatsFarcasterDelegator } from "../src/HatsFarcasterDelegator.sol";
+import { HatsModuleFactory } from "hats-module/HatsModuleFactory.sol";
 
 contract DeployImplementation is Script {
   HatsFarcasterDelegator public implementation;
@@ -50,61 +51,74 @@ contract DeployImplementation is Script {
   }
 }
 
-// contract DeployInstance is Script {
-//   HatsModuleFactory public constant FACTORY = HatsModuleFactory(0xfE661c01891172046feE16D3a57c3Cf456729efA);
-//   address public implementation; // = 0x
-//   address public instance;
+contract DeployInstance is Script {
+  HatsModuleFactory public constant FACTORY = HatsModuleFactory(0xfE661c01891172046feE16D3a57c3Cf456729efA);
+  address public implementation = 0x7E3c2179BF9AF88F76d03976fF9fb103208C4c3f;
+  address public instance;
 
-//   // default values
-//   bool internal _verbose = true;
-//   uint256 public targetHat;
-//   uint256 public threshold;
+  // default values
+  bool internal _verbose = true;
+  uint256 public ownerHat = 0x0000003a00010001000000000000000000000000000000000000000000000000;
+  uint256 public casterHat = 0x0000003a00010001000100000000000000000000000000000000000000000000;
+  address public idGateway = 0x00000000Fc25870C6eD6b6c7E41Fb078b7656f69;
+  address public idRegistry = 0x00000000Fc6c5F01Fc30151999387Bb99A9f489b;
+  address public keyGateway = 0x00000000fC56947c7E7183f8Ca4B62398CaAdf0B;
+  address public keyRegistry = 0x00000000Fc1237824fb747aBDE0FF18990E59b7e;
+  address public signedKeyRequestValidator = 0x00000000FC700472606ED4fA22623Acf62c60553;
 
-//   /// @dev Override default values, if desired
-//   function prepare(bool verbose, uint256 _targetHat, address _implementation, uint256 _threshold) public {
-//     _verbose = verbose;
-//     targetHat = _targetHat;
-//     implementation = _implementation;
-//     threshold = _threshold;
-//   }
+  /// @dev Override default values, if desired
+  function prepare(
+    bool verbose,
+    uint256 _ownerHat,
+    uint256 _casterHat,
+    address _implementation,
+    address _idGateway,
+    address _idRegistry,
+    address _keyGateway,
+    address _keyRegistry,
+    address _signedKeyRequestValidator
+  ) public {
+    _verbose = verbose;
+    ownerHat = _ownerHat;
+    casterHat = _casterHat;
+    implementation = _implementation;
+    idGateway = _idGateway;
+    idRegistry = _idRegistry;
+    keyGateway = _keyGateway;
+    keyRegistry = _keyRegistry;
+    signedKeyRequestValidator = _signedKeyRequestValidator;
+  }
 
-//   /// @dev Set up the deployer via their private key from the environment
-//   function deployer() public returns (address) {
-//     uint256 privKey = vm.envUint("PRIVATE_KEY");
-//     return vm.rememberKey(privKey);
-//   }
+  /// @dev Set up the deployer via their private key from the environment
+  function deployer() public returns (address) {
+    uint256 privKey = vm.envUint("PRIVATE_KEY");
+    return vm.rememberKey(privKey);
+  }
 
-//   function _log(string memory prefix) internal view {
-//     if (_verbose) {
-//       console2.log(string.concat(prefix, "Deployed instance:"), instance);
-//     }
-//   }
+  function _log(string memory prefix) internal view {
+    if (_verbose) {
+      console2.log(string.concat(prefix, "Deployed instance:"), instance);
+    }
+  }
 
-//   /// @dev Deploy the contract to a deterministic address via forge's create2 deployer factory.
-//   function run() public virtual returns (address) {
-//     vm.startBroadcast(deployer());
+  /// @dev Deploy the contract to a deterministic address via forge's create2 deployer factory.
+  function run() public virtual returns (address) {
+    vm.startBroadcast(deployer());
 
-//     instance = FACTORY.createHatsModule(
-//       implementation,
-//       targetHat, // hatId
-//       abi.encodePacked(
-//         ownerHat,
-//         address(idGateway),
-//         address(idRegistry),
-//         address(keyGateway),
-//         address(keyRegistry),
-//         signedKeyRequestValidator
-//       ), // otherImmutableArgs
-//       abi.encode(address(0)); // initArgs
-//     );
+    instance = FACTORY.createHatsModule(
+      implementation,
+      casterHat, // hatId
+      abi.encodePacked(ownerHat, idGateway, idRegistry, keyGateway, keyRegistry, signedKeyRequestValidator), // otherImmutableArgs
+      abi.encode(address(0)) // initArgs
+    );
 
-//     vm.stopBroadcast();
+    vm.stopBroadcast();
 
-//     _log("");
+    _log("");
 
-//     return instance;
-//   }
-// }
+    return instance;
+  }
+}
 
 /* FORGE CLI COMMANDS
 

@@ -4,7 +4,7 @@ pragma solidity ^0.8.21;
 import { Test, console2 } from "forge-std/Test.sol";
 import { ForkTest } from "./Base.t.sol";
 import { HatsFarcasterDelegator } from "../src/HatsFarcasterDelegator.sol";
-import { DeployImplementation } from "../script/HatsFarcasterDelegator.s.sol";
+import { DeployImplementation, DeployInstance } from "../script/HatsFarcasterDelegator.s.sol";
 import {
   HatsModuleFactory, IHats, deployModuleInstance, deployModuleFactory
 } from "hats-module/utils/DeployFunctions.sol";
@@ -105,9 +105,13 @@ contract WithInstanceTest is ModuleTest {
     HATS.mintHat(ownerHat, admin);
     HATS.transferHat(tophat, address(this), org);
 
-    // set up the other immutable args
-    otherImmutableArgs = abi.encodePacked(
+    // deploy and prepare the DeployInstance script
+    DeployInstance deployInstance = new DeployInstance();
+    deployInstance.prepare(
+      false,
       ownerHat,
+      casterHat,
+      address(implementation),
       address(idGateway),
       address(idRegistry),
       address(keyGateway),
@@ -115,13 +119,8 @@ contract WithInstanceTest is ModuleTest {
       signedKeyRequestValidator
     );
 
-    // set up the instance with an empty recovery address to denote that it should not register a hat for itself
-    initArgs = abi.encode(address(0));
-
-    // deploy an instance of the module
-    instance = HatsFarcasterDelegator(
-      payable(deployModuleInstance(factory, address(implementation), casterHat, otherImmutableArgs, initArgs))
-    );
+    // run the script to deploy an instance
+    instance = HatsFarcasterDelegator(payable(deployInstance.run()));
   }
 }
 
