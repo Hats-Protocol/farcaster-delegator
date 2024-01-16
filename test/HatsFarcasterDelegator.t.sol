@@ -4,7 +4,7 @@ pragma solidity ^0.8.21;
 import { Test, console2 } from "forge-std/Test.sol";
 import { ForkTest } from "./Base.t.sol";
 import { HatsFarcasterDelegator } from "../src/HatsFarcasterDelegator.sol";
-import { Deploy } from "../script/HatsFarcasterDelegator.s.sol";
+import { DeployImplementation } from "../script/HatsFarcasterDelegator.s.sol";
 import {
   HatsModuleFactory, IHats, deployModuleInstance, deployModuleFactory
 } from "hats-module/utils/DeployFunctions.sol";
@@ -17,8 +17,8 @@ import { EIP712 } from "solady/utils/EIP712.sol";
 
 /* solhint-disable state-visibility */
 
-contract ModuleTest is Deploy, ForkTest {
-  /// @dev variables inherited from Deploy script
+contract ModuleTest is DeployImplementation, ForkTest {
+  /// @dev variables inherited from DeployImplementation script
   // HatsFarcasterDelegator public implementation;
   // bytes32 public SALT;
 

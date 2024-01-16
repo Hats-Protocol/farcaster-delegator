@@ -4,9 +4,9 @@ pragma solidity ^0.8.19;
 import { Script, console2 } from "forge-std/Script.sol";
 import { HatsFarcasterDelegator } from "../src/HatsFarcasterDelegator.sol";
 
-contract Deploy is Script {
+contract DeployImplementation is Script {
   HatsFarcasterDelegator public implementation;
-  bytes32 public SALT = bytes32(abi.encode("change this to the value of your choice"));
+  bytes32 public SALT = bytes32(abi.encode(0x4a75));
 
   // default values
   bool internal _verbose = true;
@@ -26,7 +26,7 @@ contract Deploy is Script {
 
   function _log(string memory prefix) internal view {
     if (_verbose) {
-      console2.log(string.concat(prefix, "HatsFarcasterDelegator:"), address(implementation));
+      console2.log(string.concat(prefix, "Deployed implementation:"), address(implementation));
     }
   }
 
@@ -42,7 +42,7 @@ contract Deploy is Script {
      *       never differs regardless of where its being compiled
      *    2. The provided salt, `SALT`
      */
-    implementation = new HatsFarcasterDelegator{ salt: SALT }(_version /* insert constructor args here */ );
+    implementation = new HatsFarcasterDelegator{ salt: SALT }(_version);
 
     vm.stopBroadcast();
 
@@ -50,28 +50,66 @@ contract Deploy is Script {
   }
 }
 
-/// @dev Deploy pre-compiled ir-optimized bytecode to a non-deterministic address
-contract DeployPrecompiled is Deploy {
-  /// @dev Update SALT and default values in Deploy contract
+// contract DeployInstance is Script {
+//   HatsModuleFactory public constant FACTORY = HatsModuleFactory(0xfE661c01891172046feE16D3a57c3Cf456729efA);
+//   address public implementation; // = 0x
+//   address public instance;
 
-  function run() public override {
-    vm.startBroadcast(deployer());
+//   // default values
+//   bool internal _verbose = true;
+//   uint256 public targetHat;
+//   uint256 public threshold;
 
-    bytes memory args = abi.encode( /* insert constructor args here */ );
+//   /// @dev Override default values, if desired
+//   function prepare(bool verbose, uint256 _targetHat, address _implementation, uint256 _threshold) public {
+//     _verbose = verbose;
+//     targetHat = _targetHat;
+//     implementation = _implementation;
+//     threshold = _threshold;
+//   }
 
-    /// @dev Load and deploy pre-compiled ir-optimized bytecode.
-    implementation = HatsFarcasterDelegator(payable(deployCode("optimized-out/Module.sol/Module.json", args)));
+//   /// @dev Set up the deployer via their private key from the environment
+//   function deployer() public returns (address) {
+//     uint256 privKey = vm.envUint("PRIVATE_KEY");
+//     return vm.rememberKey(privKey);
+//   }
 
-    vm.stopBroadcast();
+//   function _log(string memory prefix) internal view {
+//     if (_verbose) {
+//       console2.log(string.concat(prefix, "Deployed instance:"), instance);
+//     }
+//   }
 
-    _log("Precompiled ");
-  }
-}
+//   /// @dev Deploy the contract to a deterministic address via forge's create2 deployer factory.
+//   function run() public virtual returns (address) {
+//     vm.startBroadcast(deployer());
+
+//     instance = FACTORY.createHatsModule(
+//       implementation,
+//       targetHat, // hatId
+//       abi.encodePacked(
+//         ownerHat,
+//         address(idGateway),
+//         address(idRegistry),
+//         address(keyGateway),
+//         address(keyRegistry),
+//         signedKeyRequestValidator
+//       ), // otherImmutableArgs
+//       abi.encode(address(0)); // initArgs
+//     );
+
+//     vm.stopBroadcast();
+
+//     _log("");
+
+//     return instance;
+//   }
+// }
 
 /* FORGE CLI COMMANDS
 
 ## A. Simulate the deployment locally
-forge script script/Deploy.s.sol -f mainnet
+forge script script/HatsFarcasterDelegator.s.sol -f mainnet
 
 ## B. Deploy to real network and verify on etherscan
 forge script script/Deploy.s.sol -f mainnet --broadcast --verify
@@ -81,13 +119,5 @@ forge verify-contract --chain-id 1 --num-of-optimizations 1000000 --watch --cons
  "constructor({args})" "{arg1}" "{arg2}" "{argN}" ) \ 
  --compiler-version v0.8.19 {deploymentAddress} \
  src/{Counter}.sol:{Counter} --etherscan-api-key $ETHERSCAN_KEY
-
-## D. To verify ir-optimized contracts on etherscan...
-  1. Run (C) with the following additional flag: `--show-standard-json-input > etherscan.json`
-  2. Patch `etherscan.json`: `"optimizer":{"enabled":true,"runs":100}` =>
-`"optimizer":{"enabled":true,"runs":100},"viaIR":true`
-  3. Upload the patched `etherscan.json` to etherscan manually
-
-  See this github issue for more: https://github.com/foundry-rs/foundry/issues/3507#issuecomment-1465382107
 
 */
