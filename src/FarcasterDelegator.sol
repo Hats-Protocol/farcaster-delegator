@@ -20,15 +20,20 @@ abstract contract FarcasterDelegator is IERC1271 {
                             CUSTOM ERRORS
   //////////////////////////////////////////////////////////////*/
 
-  /**
-   * @dev Thrown when a caller is not authorized for the action they are attempting to perform.
-   */
+  /// @dev Thrown when a caller is not authorized for the action they are attempting to perform.
   error Unauthorized();
 
-  /**
-   * @dev Thrown when attempting to prepare this contract to receive an fid but already has one registered.
-   */
+  /// @dev Thrown when attempting to prepare this contract to receive an fid but already has one registered.
   error AlreadyRegistered();
+
+  /// @dev Thrown when attempting to validate a signature with an unknown typehash.
+  error InvalidTypehash();
+
+  /// @dev Thrown when attempting to validate a signature with invalid typed data parameters.
+  error InvalidTypedData();
+
+  /// @dev Thrown when attempting to validate a signature with an invalid signer.
+  error InvalidSigner();
 
   /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -182,65 +187,61 @@ abstract contract FarcasterDelegator is IERC1271 {
    * not already have one registered to it. In this case, a cryptographic signature is not required, and therefore the
    * first 65 bytes can take any value.
    *
+   * @return ERC1271_MAGICVALUE if the signature is valid, or one of the following error selectors if invalid:
+   *  - `InvalidTypehash.selector` if the typehash is not recognized
+   *  - `InvalidTypedData.selector` if the `_hash` cannot be recreated from the typed data parameters
+   *  - `InvalidSigner.selector` if the signer is not authorized for the given typehash
    */
   function isValidSignature(bytes32 _hash, bytes calldata _signature) public view override returns (bytes4) {
-    // extract the signature from the _signature blob, ie the first 65 bytes
-    bytes memory sig = _signature[0:65];
-
-    /// @dev ECDSA.recover() will revert with `InvalidSignature()` if the sig is cryptographically invalid
-    address signer = ECDSA.recover(_hash, sig);
-
     // extract the typehash from 1st word after the sig, ie the 66th to 98th bytes of the _signature blob
     bytes32 typehash = bytes32(_signature[65:97]);
-
+    // allocate memory for the address of the typehash source, to be determined below
     address typehashSource;
 
-    // Check that the typehash is from a known source and if so set that address as our source for recreating the
-    // typed hashed data. Otherwise, return invalid signature.
-    if (typehash == ADD_TYPEHASH) {
-      // typehash is from keyGateway
-      typehashSource = address(keyGateway());
-    } else if (typehash == REMOVE_TYPEHASH) {
-      // typehash is from keyRegistry
-      typehashSource = address(keyRegistry());
-    } else if (typehash == TRANSFER_TYPEHASH) {
-      // extract fid from 2nd word after the sig, ie the 98th to 130th bytes of the _signature blob
+    // Determine the source of the typehash, returning the InvalidTypehash error code if it is unknown.
+    if (typehash == TRANSFER_TYPEHASH) {
+      // TRANSFER_TYPEHASH has additional logic, so we handle it first
+      // extract fid from 2nd word after the 65 actual signature bytes, ie bytes 98-130 of the _signature blob
       uint256 fid = abi.decode(_signature[97:129], (uint256));
+
       if (receivable[fid] && idRegistry().idOf(address(this)) != fid) {
-        // this contract does not own fid, and fid is approved to be received by this contract
-        // so this is a valid signature
+        // this contract does not own fid, and fid has been approved to be received by this contract
+        // so this is a valid signature regardless of the value of the first 65 bytes
         return ERC1271_MAGICVALUE;
       } else {
-        // this may be a {idRegistry.transferFor} call to transfer an fid *from* this contract
-        // typehash is from idRegistry
+        // otherwise, we handle it just like other typehashes
         typehashSource = address(idRegistry());
       }
+    } else if (typehash == ADD_TYPEHASH) {
+      typehashSource = address(keyGateway());
+    } else if (typehash == REMOVE_TYPEHASH) {
+      typehashSource = address(keyRegistry());
     } else if (typehash == CHANGE_RECOVERY_ADDRESS_TYPEHASH) {
-      // typehash is from idRegistry
       typehashSource = address(idRegistry());
     } else if (typehash == SIGNED_KEY_REQUEST_TYPEHASH) {
-      // call is originating from a SignedKeyRequestValidator
       typehashSource = signedKeyRequestValidator();
     } else {
       // unknown or unauthorized typehash
-      return bytes4(0);
+      return InvalidTypehash.selector;
     }
 
     // extract the typed data params from the _signature blob, ie everything after the first 65 bytes
     bytes memory typedData = _signature[65:];
 
-    // check that _hash can be recreated from the extracted data
+    // check that _hash can be recreated from the extracted data, using the typehashSource determined above
     if (_hash != _recreateTypedHash(typehashSource, typedData)) {
-      return bytes4(0);
+      return InvalidTypedData.selector;
     }
 
     /// @dev ECDSA.recover() will revert with `InvalidSignature()` if the sig is cryptographically invalid
     // the actual signature to recover from is the first 65 bytes of the _signature blob
     address signer = ECDSA.recover(_hash, _signature[0:65]);
+
+    // check that the signer is valid for the typehash and return the ERC1271 magic value if so
     if (_isValidSigner(typehash, signer)) {
       return ERC1271_MAGICVALUE;
     } else {
-      return bytes4(0);
+      return InvalidSigner.selector;
     }
   }
 

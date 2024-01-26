@@ -215,6 +215,15 @@ contract Register is WithInstanceTest {
   }
 }
 
+contract IsValidSignature_InvalidTypehash is WithInstanceTest {
+  function test_invalidTypehash() public {
+    // sign a digest using the wrong typehash
+    (digest, sig) = _signInvalidTypehash(caster1Key);
+
+    assertEq(instance.isValidSignature(digest, sig), InvalidTypehash.selector);
+  }
+}
+
 contract IsValidSignature_AddKey is WithInstanceTest {
   bytes public addKeyData;
 
@@ -260,7 +269,7 @@ contract IsValidSignature_AddKey is WithInstanceTest {
     assertEq(instance.isValidSignature(digest, sig), ERC1271_MAGICVALUE);
   }
 
-  function test_invalid_nonWearer_addKey() public {
+  function test_invalidSigner_nonWearer_addKey() public {
     // set up dummy add key data
     owner = address(1234);
     keyType = 1;
@@ -273,12 +282,33 @@ contract IsValidSignature_AddKey is WithInstanceTest {
     addKeyData = _encodeAddKeyData(owner, keyType, key, metadataType, metadata, nonce, deadline);
 
     // prepare the digest
-    digest = _buildKeyRegistryDigest(addKeyData);
+    digest = _buildKeyGatewayDigest(addKeyData);
 
     // sign it, appending the encoded data to the signature
     sig = _signAddKey(nonWearerKey, owner, keyType, key, metadataType, metadata, nonce, deadline);
 
-    assertEq(instance.isValidSignature(digest, sig), bytes4(0));
+    assertEq(instance.isValidSignature(digest, sig), InvalidSigner.selector);
+  }
+
+  function test_invalidTypedData_wearer_addKey() public {
+    // set up dummy add key data
+    owner = address(1234);
+    keyType = 1;
+    metadataType = 1;
+    metadata = abi.encode("metadata");
+    nonce = 1;
+    deadline = 1;
+
+    // encode add key data
+    addKeyData = _encodeAddKeyData(owner, keyType, key, metadataType, metadata, nonce, deadline);
+
+    // prepare the digest using the wrong typehash
+    digest = _buildKeyRegistryDigest(addKeyData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signAddKey(caster1Key, owner, keyType, key, metadataType, metadata, nonce, deadline);
+
+    assertEq(instance.isValidSignature(digest, sig), InvalidTypedData.selector);
   }
 }
 
@@ -344,7 +374,25 @@ contract IsValidSignature_SignedKeyRequest is WithInstanceTest {
     sig = _signKeyRequest(validator, fid, nonWearerKey, key, deadline);
 
     // assert that the signature is invalid
-    assertEq(instance.isValidSignature(digest, sig), bytes4(0));
+    assertEq(instance.isValidSignature(digest, sig), InvalidSigner.selector);
+  }
+
+  function test_invalidTypedData_wearer_signedKeyRequest() public {
+    // set up dummy signed key request data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode signed key request data
+    signedKeyRequestData = _encodeSignedKeyRequestData(validator, fid, key, deadline);
+
+    // prepare the digest using the wrong typehash
+    digest = _buildKeyRegistryDigest(signedKeyRequestData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signKeyRequest(validator, fid, caster1Key, key, deadline);
+
+    // assert that the signature is invalid
+    assertEq(instance.isValidSignature(digest, sig), InvalidTypedData.selector);
   }
 }
 
@@ -384,7 +432,25 @@ contract IsValidSignature_RemoveKey is WithInstanceTest {
     sig = _signRemoveKey(nonWearerKey, owner, key, deadline);
 
     // assert that the signature is invalid
-    assertEq(instance.isValidSignature(digest, sig), bytes4(0));
+    assertEq(instance.isValidSignature(digest, sig), InvalidSigner.selector);
+  }
+
+  function test_invalidTypedData_wearer_removeKey() public {
+    // set up dummy remove key data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode remove key data
+    removeKeyData = _encodeRemoveKeyData(owner, key, deadline);
+
+    // prepare the digest using the wrong typehash
+    digest = _buildKeyGatewayDigest(removeKeyData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signRemoveKey(adminKey, owner, key, deadline);
+
+    // assert that the signature is invalid
+    assertEq(instance.isValidSignature(digest, sig), InvalidTypedData.selector);
   }
 }
 
@@ -425,7 +491,53 @@ contract IsValidSignature_Transfer is WithInstanceTest {
     sig = _signTransfer(nonWearerKey, fid, recipient, deadline, owner);
 
     // assert that the signature is invalid
-    assertEq(instance.isValidSignature(digest, sig), bytes4(0));
+    assertEq(instance.isValidSignature(digest, sig), InvalidSigner.selector);
+  }
+
+  function test_valid_self_preparedToReceive() public {
+    // register a new fid to org
+    fid = _registerViaGateway(org, org);
+
+    // set transfer data
+    owner = org;
+    deadline = 1;
+
+    // ownerHat-wearer prepare the instance to receive an fid
+    vm.prank(admin);
+    instance.prepareToReceive(fid);
+
+    // encode transfer data
+    transferData = _encodeTransferData(fid, recipient, deadline, owner);
+
+    // prepare the digest
+    digest = _buildIdRegistryDigest(transferData);
+
+    // sign it, appending the encoded data to the signature
+    bytes memory emptySig = new bytes(65);
+    // sig = _signTransfer(adminKey, fid, recipient, deadline, owner);
+    sig = abi.encodePacked(emptySig, transferData);
+    console2.logBytes(sig);
+
+    // assert that the signature is valid
+    assertEq(instance.isValidSignature(digest, sig), ERC1271_MAGICVALUE);
+  }
+
+  function test_invalidTypedData_wearer_transfer() public {
+    // set up dummy transfer data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode transfer data
+    transferData = _encodeTransferData(fid, recipient, deadline, owner);
+
+    // prepare the digest using the wrong typehash
+    digest = _buildKeyGatewayDigest(transferData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signTransfer(adminKey, fid, recipient, deadline, owner);
+
+    // assert that the signature is invalid
+    assertEq(instance.isValidSignature(digest, sig), InvalidTypedData.selector);
   }
 }
 
@@ -466,7 +578,25 @@ contract IsValidSignature_ChangeRecoveryAddress is WithInstanceTest {
     sig = _signChangeRecoveryAddress(nonWearerKey, fid, newRecovery, owner, deadline);
 
     // assert that the signature is invalid
-    assertEq(instance.isValidSignature(digest, sig), bytes4(0));
+    assertEq(instance.isValidSignature(digest, sig), InvalidSigner.selector);
+  }
+
+  function test_invalidTypedData_wearer_changeRecoveryAddress() public {
+    // set up dummy change recovery address data
+    owner = address(1234);
+    deadline = 1;
+
+    // encode change recovery address data
+    changeRecoveryAddressData = _encodeChangeRecoveryAddressData(fid, newRecovery, owner, deadline);
+
+    // prepare the digest using the wrong typehash
+    digest = _buildKeyGatewayDigest(changeRecoveryAddressData);
+
+    // sign it, appending the encoded data to the signature
+    sig = _signChangeRecoveryAddress(adminKey, fid, newRecovery, owner, deadline);
+
+    // assert that the signature is invalid
+    assertEq(instance.isValidSignature(digest, sig), InvalidTypedData.selector);
   }
 }
 
