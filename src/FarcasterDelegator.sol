@@ -34,10 +34,9 @@ abstract contract FarcasterDelegator is IERC1271 {
                                 EVENTS
   //////////////////////////////////////////////////////////////*/
 
-  /**
-   * @dev Emitted when the contract is ready to receive a fid.
-   * @param fid The fid that the contract is ready to receive.
-   */
+  /// @dev Emitted when the contract has been approved to receive a given fid without an accompanying cryptographic
+  /// signature by an authorized signer.
+  /// @param fid The fid that the contract is ready to receive.
   event ReadyToReceive(uint256 fid);
 
   /*//////////////////////////////////////////////////////////////
@@ -139,9 +138,11 @@ abstract contract FarcasterDelegator is IERC1271 {
   //////////////////////////////////////////////////////////////*/
 
   /**
-   * @notice Prepare to receive an fid.
+   * @notice Enable this contract to receive a given fid. Especially useful for use when the signer(s) authorized for
+   * the TRANSFER_TYPEHASH cannot conveniently produce a cryptographic signature that can be passed to
+   * {idRegistry.transfer}.
    * @dev Establishes the state that will allow this contract to produce a valid ERC1271 signature required to receive
-   * an fid transfer.
+   * an fid transfer. This contract must not already have an fid registered to it.
    * @param _fid The fid that this contract will receive.
    */
   function prepareToReceive(uint256 _fid) public {
@@ -171,10 +172,16 @@ abstract contract FarcasterDelegator is IERC1271 {
    * end of the signature blob. It will attempt to extract the typehash and use it to route the validation logic. If
    * the typehash is not recognized, or if the `_hash` cannot be recreated from the typed data parameters, the signature
    * will be considered invalid.
-   *  @param _signature Must take the following format to enable the relevant typehash-based routing logic:
+   *
+   * @param _signature Must take the following format to enable the relevant typehash-based routing logic:
    *  - First 65 bytes: the actual signature produced by signing the `_hash`
    *  - Next 32 bytes: the typehash of the Farcaster action being authorized
    *  - Remaining bytes: the EIP712 typed data parameters used to generate the `_hash`, not including the typehash
+   *
+   * There is a special case for TRANSFER_TYPEHASH when this contract has been prepared to receive a given fid and does
+   * not already have one registered to it. In this case, a cryptographic signature is not required, and therefore the
+   * first 65 bytes can take any value.
+   *
    */
   function isValidSignature(bytes32 _hash, bytes calldata _signature) public view override returns (bytes4) {
     // extract the signature from the _signature blob, ie the first 65 bytes
@@ -226,7 +233,10 @@ abstract contract FarcasterDelegator is IERC1271 {
     if (_hash != _recreateTypedHash(typehashSource, typedData)) {
       return bytes4(0);
     }
-    // check that the signer is valid and return the ERC1271 magic value if so
+
+    /// @dev ECDSA.recover() will revert with `InvalidSignature()` if the sig is cryptographically invalid
+    // the actual signature to recover from is the first 65 bytes of the _signature blob
+    address signer = ECDSA.recover(_hash, _signature[0:65]);
     if (_isValidSigner(typehash, signer)) {
       return ERC1271_MAGICVALUE;
     } else {
