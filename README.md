@@ -38,14 +38,14 @@ The `casterHat` — aka the `hatId` — grants authority to add a key to the c
 
 It supports the following functions:
 
-| Function                                                        | Related Farcaster Typehashes                                              |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| 1. Receive an existing fid transferred from a different account | IdRegistry.TRANSFER_TYPEHASH()                                            |
-| 2. Register a new fid owned by itself                           | IdGateway.REGISTER_TYPEHASH()                                             |
-| 3. Add a key to the fid, e.g. to delegate casting authority     | KeyGateway.ADD_TYPEHASH(), SignedKeyRequestValidator.METADATA_TYPEHASH()  |
-| 4. Remove a key from the fid                                    | KeyRegistry.REMOVE_TYPEHASH()                                             |
-| 5. Transfer ownership of the fid to another account             | IdRegistry.TRANSFER_TYPEHASH()                                            |
-| 6. Change the recovery address of the fid                       | IdRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH()                             |
+| Function                                                        | Related Farcaster Typehashes                                             |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1. Receive an existing fid transferred from a different account | IdRegistry.TRANSFER_TYPEHASH()                                           |
+| 2. Register a new fid owned by itself                           | IdGateway.REGISTER_TYPEHASH()                                            |
+| 3. Add a key to the fid, e.g. to delegate casting authority     | KeyGateway.ADD_TYPEHASH(), SignedKeyRequestValidator.METADATA_TYPEHASH() |
+| 4. Remove a key from the fid                                    | KeyRegistry.REMOVE_TYPEHASH()                                            |
+| 5. Transfer ownership of the fid to another account             | IdRegistry.TRANSFER_TYPEHASH()                                           |
+| 6. Change the recovery address of the fid                       | IdRegistry.CHANGE_RECOVERY_ADDRESS_TYPEHASH()                            |
 
 Since the [Farcaster contract](https://github.com/farcasterxyz/contracts) functions all have corresponding `<function>For` flavors powered by EIP-712 signatures, each of the above actions can either be initiated by the FarcasterDelegator contract or by a user with a valid signature.
 
@@ -78,30 +78,42 @@ If this check passes, we can then validate the signature itself. Since a valid s
 
 In summary, the `signature` parameter must be formatted as follows:
 
-| Offset | Length | Contents                                                                             |
-| ------ | ------ | ------------------------------------------------------------------------------------ |
-| 0      | 65     | The actual signature                                                                 |
-| 65     | 32     | The EIP-712 typehash corresponding to the Farcaster function being authorized        |
+| Offset | Length | Contents                                                                            |
+| ------ | ------ | ----------------------------------------------------------------------------------- |
+| 0      | 65     | The actual signature                                                                |
+| 65     | 32     | The EIP-712 typehash corresponding to the Farcaster function being authorized       |
 | 97     | varies | The other EIP-712 typed data parameters for the Farcaster function being authorized |
 
 ### 1. Receiving an existing fid
 
-A FarcasterDelegator contract is only useful when it owns an fid. Since Farcaster requires recipients of an fid sign a message authorizing receipt, when working with an existing fid, the FarcasterDelegator contract must be able to produce such a signature.
+A FarcasterDelegator contract is only useful when it owns an fid. In order to receive an existing fid, a FarcasterDelegator contract must be able to produce a signature authorizing receipt, as required by the Farcaster protocol. 
 
-We again utilize EIP-1271 to accomplish this. Here's how it works:
+There are two way to have FarcasterDelegator produce a transfer-approval signature, both triggered by a valid signer: a) the valid signer can "prepare" the FarcasterDelegator to receive the fid, or b) the valid signer can produce a valid `TRANSFER_TYPEHASH`-related ECDSA signature.
 
-Firstly, the user must be a valid signer as determined by `FarcasterDelegator._isValidSigner(TRANSFER_TYPEHASH)`.
+#### Receive Method A: using `prepareToReceive()`
 
-When such a user calls `FarcasterDelegator.prepareToReceive()` function with the fid to be transferred, the contract will store the fid as `receivable`.
+This method is useful for signers authorized for the `TRANSFER_TYPEHASH` action but are not in a position to make a direct call to the FarcasterDelegator contract. Such as when using a Farcaster client that has not implemented specific support for FarcasterDelegator contracts, or when the signer is a contract itself.
 
-Then, the user generates the EIP-712 typed data associated with the `IdRegistry.TRANSFER_TYPEHASH()` action (which, crucially, includes the fid itself), hashes it with `IdRegistry.hashTypedDataV4()`, signs it, appends the unhashed typed data bytes to the end of the signature, and finally shares the signature blob with the current owner of the fid.
+In this method, a valid signer calls `FarcasterDelegator.prepareToReceive()` with the fid to be transferred as the sole argument. This function will store the fid as `receivable`, which will set up the contract to produce the correct transfer-approval signature.
+
+Then, the owner of the fid can call `IdRegistry.transfer()`, passing in the address of the FarcasterDelegator contract (`to`), a `deadline`, and a signature blob (`sig`) as arguments. The signature should take [the form described above](#valid-signatures), but in this case the actual 65 signature bytes can take any value, since the `isValidSignature` logic for this method depends instead on the `receivable` storage variable.
+
+Since `to` is our contract, the IdRegistry will attempt to verify the signature via EIP-1271, which will result in a call to `FarcasterDelegator.isValidSignature()`. As described [above](#valid-signatures), that function will extract the typehash and fid (via the typedData) from the `sig`. If that fid was set as `receivable` earlier, the function will authorize the signature as valid. See the logic in [`FarcasterDelegator._isValidSigner()`](./src/FarcasterDelegator.sol#L202) for the code.
+
+#### Receive Method B: producing a signature
+
+The other method utilizes the same approach to EIP-1271 as for other actions. Here's how it works:
+
+A valid signer generates the EIP-712 typed data associated with the `IdRegistry.TRANSFER_TYPEHASH()` action (which, crucially, includes the fid itself), hashes it with `IdRegistry.hashTypedDataV4()`, signs it, appends the unhashed typed data bytes to the end of the signature, and finally shares the signature blob with the current owner of the fid.
 
 > [!NOTE]
 > Farcaster clients or other apps can help users prepare the typed data and signature. It's likely that this will be the most common way FarcasterDelegator contracts are used.
 
-Then, the owner calls `IdRegistry.transfer()`, with the address of the FarcasterDelegator contract (`to`) and signature (`sig`) as arguments. Since `to` is a contract, the IdRegistry will attempt to verify the signature via EIP-1271, which will result in a call to `FarcasterDelegator.isValidSignature()`. As described [above](#valid-signatures), that function will extract the typehash from the `sig`.
+Then, the owner of the fid can call `IdRegistry.transfer()`, passing in the address of the FarcasterDelegator contract (`to`), a `deadline`, and a signature blob (`sig`) as arguments. 
 
-If the typehash is `TRANSFER_TYPEHASH`, the function will then extract the fid typed data parameter from the `sig`. If the fid is marked as `receivable` in storage, then the signature is considered valid and the transfer will succeed.
+Since `to` is a contract, the IdRegistry will attempt to verify the signature via EIP-1271, which will result in a call to `FarcasterDelegator.isValidSignature()`. As described [above](#valid-signatures), that function will extract the typehash from the `sig`.
+
+If the typehash is `TRANSFER_TYPEHASH`, the function will then extract the fid typed data parameter from the `sig`. Unlike Method A, the actual 65 signature bytes must contain an actual signature, since the `isValidSignature` logic for this method depends on the signature itself.
 
 ### 2. Registering a new fid
 
