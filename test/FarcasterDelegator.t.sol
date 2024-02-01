@@ -225,7 +225,7 @@ contract Receive is MockTest {
     mock = new MockFarcasterDelegator(idGateway, idRegistry, keyGateway, keyRegistry_, signedKeyRequestValidator);
   }
 
-  function test_transfer() public {
+  function test_viaPrepare() public {
     // recovery registers an fid for itself
     fid = _registerViaGateway(recovery, recovery);
 
@@ -235,10 +235,40 @@ contract Receive is MockTest {
 
     // recovery generates the transfer signature block for the mock to receive the fid
     deadline = block.timestamp + 1 days;
+    bytes memory transferData = _encodeTransferData(fid, address(mock), deadline, recovery);
+    signature = abi.encodePacked(new bytes(65), transferData);
+
+    // recovery transfers the fid to the mock
+    vm.prank(recovery);
+    idRegistry.transfer(address(mock), deadline, signature);
+  }
+
+  function test_viaOwnerSig() public {
+    // recovery registers an fid for itself
+    fid = _registerViaGateway(recovery, recovery);
+
+    // recovery generates the transfer signature block for the mock to receive the fid
+    deadline = block.timestamp + 1 days;
     signature = _signReceive(recoveryKey, fid, address(mock), deadline);
 
     // recovery transfers the fid to the mock
     vm.prank(recovery);
+    idRegistry.transfer(address(mock), deadline, signature);
+  }
+
+  function test_revert_notPrepared_notOwner() public {
+    // set up addresses
+    (address otherAddr, uint256 otherKey) = makeAddrAndKey("other");
+
+    // otherAddr registers an fid for itself
+    fid = _registerViaGateway(otherAddr, otherAddr);
+
+    // otherAddr generates the transfer signature block for the mock to receive the fid
+    deadline = block.timestamp + 1 days;
+    signature = _signReceive(otherKey, fid, address(mock), deadline);
+
+    // otherAddr attempts to transfer the fid to the mock, but can't
+    vm.expectRevert();
     idRegistry.transfer(address(mock), deadline, signature);
   }
 }

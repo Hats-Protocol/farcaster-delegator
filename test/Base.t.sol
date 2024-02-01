@@ -29,6 +29,9 @@ contract Base is Test {
   // FarcasterDelegator errors
   error Unauthorized();
   error AlreadyRegistered();
+  error InvalidTypehash();
+  error InvalidTypedData();
+  error InvalidSigner();
 
   // FarcasterDelegator events
   event ReadyToReceive(uint256 fid);
@@ -64,6 +67,28 @@ contract Base is Test {
     vm.prank(_caller);
     // register with no extra storage
     (_fid,) = FarcasterDelegator(payable(_farcasterDelegator)).register{ value: 1 ether }(_recovery, 0);
+  }
+
+  /*//////////////////////////////////////////////////////////////
+                            INVALID TYPEHASH
+  //////////////////////////////////////////////////////////////*/
+
+  function _signInvalidTypehash(uint256 _pk) internal returns (bytes32 digest, bytes memory _signature) {
+    // build a ~random digest
+    digest = keccak256(abi.encodePacked("~random digest"));
+
+    // build a ~random typhash
+    bytes32 typehash = keccak256(abi.encodePacked("~random typehash"));
+
+    // sign it to generate the preliminary signature
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(_pk, digest);
+    _signature = abi.encodePacked(r, s, v);
+
+    // assert that the preliminary signature is the correct length
+    assertEq(_signature.length, 65);
+
+    // append the typehash to the signature
+    _signature = abi.encodePacked(_signature, typehash);
   }
 
   /*//////////////////////////////////////////////////////////////

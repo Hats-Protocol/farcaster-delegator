@@ -7,15 +7,6 @@ import {
   FarcasterDelegator, IERC1271, IIdGateway, IIdRegistry, IKeyGateway, IKeyRegistry
 } from "./FarcasterDelegator.sol";
 
-/*
-Design considerations/questions:
-- How can this contract receive fid transfers?
-- Should we support contract signatures? This might be relevant as account abstraction proliferates.
-- Should we support multiple hats? This would require a different approach to {isValidSignature}, such as potentially
-requiring that the hatId be appended to the signature. And also require logic to approve additional hats.
-- Are there any relevant Farcaster functions we should wrap to enable the {recovery} address to call them?
-*/
-
 /**
  * @title HatsFarcasterDelegator
  * @author spengrah

@@ -11,7 +11,7 @@ contract DeployImplementation is Script {
 
   // default values
   bool internal _verbose = true;
-  string internal _version = "0.1.0"; // increment this with each new deployment
+  string internal _version = "0.2.0"; // increment this with each new deployment
 
   /// @dev Override default values, if desired
   function prepare(bool verbose, string memory version) public {
@@ -49,11 +49,15 @@ contract DeployImplementation is Script {
 
     _log("");
   }
+
+  /*
+  forge script script/HatsFarcasterDelegator.s.sol:DeployImplementation -f optimism --broadcast --verify
+  */
 }
 
 contract DeployInstance is Script {
   HatsModuleFactory public constant FACTORY = HatsModuleFactory(0xfE661c01891172046feE16D3a57c3Cf456729efA);
-  address public implementation = 0x7E3c2179BF9AF88F76d03976fF9fb103208C4c3f;
+  address public implementation = 0xa947334C33daDca4BcBb396395eCFD66601BB38c;
   address public instance;
 
   // default values
@@ -123,13 +127,13 @@ contract DeployInstance is Script {
 /* FORGE CLI COMMANDS
 
 ## A. Simulate the deployment locally
-forge script script/HatsFarcasterDelegator.s.sol -f mainnet
+forge script script/HatsFarcasterDelegator.s.sol:DeployInstance -f optimism --broadcast --verify
 
 ## B. Deploy to real network and verify on etherscan
-forge script script/Deploy.s.sol -f mainnet --broadcast --verify
+forge script script/Deploy.s.sol -f optimism --broadcast --verify
 
 ## C. Fix verification issues (replace values in curly braces with the actual values)
-forge verify-contract --chain-id 1 --num-of-optimizations 1000000 --watch --constructor-args $(cast abi-encode \
+forge verify-contract --chain-id 10 --num-of-optimizations 1000000 --watch --constructor-args $(cast abi-encode \
  "constructor({args})" "{arg1}" "{arg2}" "{argN}" ) \ 
  --compiler-version v0.8.19 {deploymentAddress} \
  src/{Counter}.sol:{Counter} --etherscan-api-key $ETHERSCAN_KEY
