@@ -86,7 +86,7 @@ In summary, the `signature` parameter must be formatted as follows:
 
 ### 1. Receiving an existing fid
 
-A FarcasterDelegator contract is only useful when it owns an fid. In order to receive an existing fid, a FarcasterDelegator contract must be able to produce a signature authorizing receipt, as required by the Farcaster protocol. 
+A FarcasterDelegator contract is only useful when it owns an fid. In order to receive an existing fid, a FarcasterDelegator contract must be able to produce a signature authorizing receipt, as required by the Farcaster protocol.
 
 There are two way to have FarcasterDelegator produce a transfer-approval signature, both triggered by a valid signer: a) the valid signer can "prepare" the FarcasterDelegator to receive the fid, or b) the valid signer can produce a valid `TRANSFER_TYPEHASH`-related ECDSA signature.
 
@@ -109,7 +109,7 @@ A valid signer generates the EIP-712 typed data associated with the `IdRegistry.
 > [!NOTE]
 > Farcaster clients or other apps can help users prepare the typed data and signature. It's likely that this will be the most common way FarcasterDelegator contracts are used.
 
-Then, the owner of the fid can call `IdRegistry.transfer()`, passing in the address of the FarcasterDelegator contract (`to`), a `deadline`, and a signature blob (`sig`) as arguments. 
+Then, the owner of the fid can call `IdRegistry.transfer()`, passing in the address of the FarcasterDelegator contract (`to`), a `deadline`, and a signature blob (`sig`) as arguments.
 
 Since `to` is a contract, the IdRegistry will attempt to verify the signature via EIP-1271, which will result in a call to `FarcasterDelegator.isValidSignature()`. As described [above](#valid-signatures), that function will extract the typehash from the `sig`.
 
