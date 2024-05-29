@@ -32,6 +32,9 @@ abstract contract FarcasterDelegator is IERC1271 {
   /// @dev Thrown when attempting to validate a signature with invalid typed data parameters.
   error InvalidTypedData();
 
+  /// @dev Thrown when attempting to validate a signature that is invalid for the signer.
+  error InvalidSignature();
+
   /// @dev Thrown when attempting to validate a signature with an invalid signer.
   error InvalidSigner();
 
@@ -178,14 +181,24 @@ abstract contract FarcasterDelegator is IERC1271 {
    * the typehash is not recognized, or if the `_hash` cannot be recreated from the typed data parameters, the signature
    * will be considered invalid.
    *
-   * @param _signature Must take the following format to enable the relevant typehash-based routing logic:
-   *  - First 65 bytes: the actual signature produced by signing the `_hash`
-   *  - Next 32 bytes: the typehash of the Farcaster action being authorized
-   *  - Remaining bytes: the EIP712 typed data parameters used to generate the `_hash`, not including the typehash
+   * @param _signature Must this scheme to enable the relevant typehash-based routing logic:
+   * ------------------------------------------------------------------------------------------------------------------|
+   * | Offset        | Length   | Description                                                                          |
+   * ------------------------------------------------------------------------------------------------------------------|
+   * | 0             | 2        | Length of signature, `sigLen`                                                        |
+   * | 2             | `sigLen` | The signature associated with the `_hash`. Can be either ECDSA or ERC1271 signature. |
+   * | 2  + `sigLen` | 32       | Typehash of the Farcaster action being authorized                                    |
+   * | 34 + `sigLen` | any      | EIP712 typed data, not including the typehash                                        |
+   * ------------------------------------------------------------------------------------------------------------------|
+   *
+   * - EOA signatures should be packed ECDSA signatures of the form `{bytes32 r}{bytes32 s}{uint8 v}`, ie 65 bytes long.
+   * - ERC1271 signatures should be at least 65 bytes long, where in the first 65 bytes the address of the signing
+   * contract is encoded into r and v=0. See
    *
    * There is a special case for TRANSFER_TYPEHASH when this contract has been prepared to receive a given fid and does
    * not already have one registered to it. In this case, a cryptographic signature is not required, and therefore the
-   * first 65 bytes can take any value.
+   * actualy signature [2:2 + `sigLen`] can take any value or length — a `sigLen` of 0 is recommended for gas
+   * efficiency.
    *
    * @return ERC1271_MAGICVALUE if the signature is valid, or one of the following error selectors if invalid:
    *  - `InvalidTypehash.selector` if the typehash is not recognized
@@ -193,20 +206,26 @@ abstract contract FarcasterDelegator is IERC1271 {
    *  - `InvalidSigner.selector` if the signer is not authorized for the given typehash
    */
   function isValidSignature(bytes32 _hash, bytes calldata _signature) public view override returns (bytes4) {
-    // extract the typehash from 1st word after the sig, ie the 66th to 98th bytes of the _signature blob
-    bytes32 typehash = bytes32(_signature[65:97]);
+    // the actual "sig" is the component of the _signature bytes array that corresponds to an ECDSA or ERC1271 signature
+    // the length of the actual sig is stored first 2 bytes of the _signature bytes array
+    uint256 sigLength = abi.decode(_signature[0:2], (uint256));
+    uint256 typehashOffset = 2 + sigLength;
+
+    // extract the typehash from 1st word after the sig
+    bytes32 typehash = bytes32(_signature[typehashOffset:typehashOffset + 32]);
+
     // allocate memory for the address of the typehash source, to be determined below
     address typehashSource;
 
     // Determine the source of the typehash, returning the InvalidTypehash error code if it is unknown.
     if (typehash == TRANSFER_TYPEHASH) {
       // TRANSFER_TYPEHASH has additional logic, so we handle it first
-      // extract fid from 2nd word after the 65 actual signature bytes, ie bytes 98-130 of the _signature blob
-      uint256 fid = abi.decode(_signature[97:129], (uint256));
+      // extract fid from 2nd word after the actual sig bytes
+      uint256 fid = abi.decode(_signature[typehashOffset + 32:typehashOffset + 64], (uint256));
 
       if (receivable[fid] && idRegistry().idOf(address(this)) != fid) {
         // this contract does not own fid, and fid has been approved to be received by this contract
-        // so this is a valid signature regardless of the value of the first 65 bytes
+        // so this is a valid signature regardless of the value of the actual sig
         return ERC1271_MAGICVALUE;
       } else {
         // otherwise, we handle it just like other typehashes
@@ -225,17 +244,37 @@ abstract contract FarcasterDelegator is IERC1271 {
       return InvalidTypehash.selector;
     }
 
-    // extract the typed data params from the _signature blob, ie everything after the first 65 bytes
-    bytes memory typedData = _signature[65:];
+    // extract the typed data params (including the typehash) from the _signature bytes array
+    // ie everything after the actual sig
+    bytes memory typedData = _signature[typehashOffset:];
 
     // check that _hash can be recreated from the extracted data, using the typehashSource determined above
     if (_hash != _recreateTypedHash(typehashSource, typedData)) {
       return InvalidTypedData.selector;
     }
 
-    /// @dev ECDSA.recover() will revert with `InvalidSignature()` if the sig is cryptographically invalid
-    // the actual signature to recover from is the first 65 bytes of the _signature blob
-    address signer = ECDSA.recover(_hash, _signature[0:65]);
+    // extract the actual sig from the _signature bytes array
+    bytes memory sig = _signature[2:typehashOffset];
+    // split the signature into its components
+    (uint8 v, bytes32 r, bytes32 s) = _splitSignature(sig);
+
+    // recover the signer
+    address signer;
+
+    if (v == 0) {
+      // This is an EIP-1271 contract signature
+      // The address of the signer contract is encoded into r
+      signer = address(uint160(uint256(r)));
+
+      // We also need to check that the signature is valid for the signing contract.
+      // The offset of the contract signature data is stored in s
+      if (!_isValidContractSignature(signer, _hash, sig, s)) return InvalidSignature.selector;
+    } else {
+      // This is an EOA signature
+      // The signer is recovered from the ECDSA signature
+      /// @dev ECDSA.recover() will revert with `InvalidSignature()` if the sig is cryptographically invalid
+      signer = ECDSA.recover(_hash, v, r, s);
+    }
 
     // check that the signer is valid for the typehash and return the ERC1271 magic value if so
     if (_isValidSigner(typehash, signer)) {
@@ -246,7 +285,7 @@ abstract contract FarcasterDelegator is IERC1271 {
   }
 
   /*//////////////////////////////////////////////////////////////
-                          VERIFICATION HELPERS
+                    SIGNATURE VALIDATION HELPERS
   //////////////////////////////////////////////////////////////*/
 
   /// @dev Check whether `_signer` is authorized by this contract for the given `_typehash` action
@@ -255,6 +294,46 @@ abstract contract FarcasterDelegator is IERC1271 {
   /// @dev Recreate a typed hash from the provided `_typedData` using the provided `_typehashSource`
   function _recreateTypedHash(address _typehashSource, bytes memory _typedData) internal view returns (bytes32) {
     return EIP712Like(_typehashSource).hashTypedDataV4(keccak256(_typedData));
+  }
+
+  /**
+   * @dev Divides bytes signature into `uint8 v, bytes32 r, bytes32 s`, ignoring anything after the first 65 bytes.
+   * Borrowed from https://github.com/gnosis/mech/blob/main/contracts/base/Mech.sol
+   * @param signature The signature bytes array
+   */
+  function _splitSignature(bytes memory signature) internal pure returns (uint8 v, bytes32 r, bytes32 s) {
+    // The signature format is a compact form of:
+    //   {bytes32 r}{bytes32 s}{uint8 v}
+    // Compact means, uint8 is not padded to 32 bytes.
+    // solhint-disable-next-line no-inline-assembly
+    assembly {
+      r := mload(add(signature, 0x20))
+      s := mload(add(signature, 0x40))
+      v := byte(0, mload(add(signature, 0x60)))
+    }
+  }
+
+  /**
+   * @dev Validates a contract signature using the ERC1271 interface
+   * @param _signer The address of the signing contract
+   * @param _hash The hash of the message being "signed"
+   * @param _signature The ERC1271 signature bytes array
+   * @param _offset The offset in the `_signature` bytes array pointing to the start of the contract signature data
+   */
+  function _isValidContractSignature(address _signer, bytes32 _hash, bytes memory _signature, bytes32 _offset)
+    internal
+    view
+    returns (bool)
+  {
+    // extract the contract signature data from the _signature bytes array
+    bytes memory contractSignature;
+    // solhint-disable-next-line no-inline-assembly
+    assembly {
+      contractSignature := add(add(_signature, _offset), 0x20) // add 0x20 to skip over the length of the bytes array
+    }
+
+    // check that the contract signature is valid for the signing contract
+    return (IERC1271(_signer).isValidSignature(_hash, contractSignature) == IERC1271.isValidSignature.selector);
   }
 
   /*//////////////////////////////////////////////////////////////
